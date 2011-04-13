@@ -1,0 +1,7 @@
+config BR2_PACKAGE_ELINKS
+	bool "elinks"
+	default n
+	help
+	  Enhanced links, which is a graphics and text mode WWW browser (kind of like lynx).
+
+	  http://elinks.or.cz/

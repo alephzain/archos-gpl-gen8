@@ -1,0 +1,145 @@
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/qt/poppler-page.cc poppler-0.5.1/qt/poppler-page.cc
+--- poppler-0.5.1.orig/qt/poppler-page.cc	2009-03-31 15:48:25.000000000 +0200
++++ poppler-0.5.1/qt/poppler-page.cc	2009-03-31 15:48:25.000000000 +0200
+@@ -148,6 +148,112 @@
+   }
+ }
+ 
++void Page::renderToBufferScaled(unsigned char *buffer[], int *num_bytes, int *dst_linestep, int *w, int *h, int fmt, int hDpi, int vDpi, 
++		int (*memoryAllocator)(unsigned char *buffer[], int *dst_linestep, int w, int h, int fmt, void *ctx),
++		void *ctx,
++		bool (*abortCheckCbk)(void *data),
++		void *abortCheckCbkData)
++{
++	if (!buffer || !dst_linestep)
++		return;
++		
++	if (!memoryAllocator)
++		return;
++	
++	SplashBitmap *bitmap;
++	SplashColorPtr color_ptr;
++	output_dev = data->doc->data->getOutputDev();
++
++	data->doc->data->doc.displayPageSlice(output_dev, data->index + 1, hDpi, vDpi,
++	    0, false, false, false, -1, -1, -1, -1, (GBool (*)(void*))abortCheckCbk,
++						abortCheckCbkData);
++
++	bitmap = output_dev->getBitmap ();
++	color_ptr = bitmap->getDataPtr ();
++	int bw = bitmap->getWidth();
++	int bh = bitmap->getHeight();
++
++	int src_lstep = output_dev->getBitmap()->getRowSize();
++	
++	int size;
++	
++	if ((size = memoryAllocator(buffer, dst_linestep, bw, bh, fmt, ctx)) < 0) {
++	      	*buffer = NULL;
++		return;
++	}
++	else if (num_bytes)
++		*num_bytes = size;		
++
++	if (w) *w = bw;
++	if (h) *h = bh;
++	
++printf("poppler render: %d\n", fmt);
++	switch (fmt)
++	{
++		case BufferFormatInterleavedRgb:
++		{
++printf("BufferFormatInterleavedRgb: src_lstep: %d, *dst_linestep: %d\n", src_lstep, *dst_linestep);
++			unsigned char *ptrR = buffer[0];
++			unsigned char *ptrG = buffer[1];
++			unsigned char *ptrB = buffer[2];
++			
++			for (int i = 0; i < bh; i++)
++			{
++				unsigned char *src = color_ptr + i * src_lstep;
++				for (int j = 0; j < bw; j++) {
++					ptrR[j] = *src++;
++					ptrG[j] = *src++;
++					ptrB[j] = *src++;
++					
++					src++; // alpha;
++				}
++				ptrR += *dst_linestep;
++				ptrG += *dst_linestep;
++				ptrB += *dst_linestep;
++			}
++
++			break;
++		}
++		case BufferFormatInterleavedRgba:
++		{
++			unsigned char *ptrR = buffer[0];
++			unsigned char *ptrG = buffer[1];
++			unsigned char *ptrB = buffer[2];
++			unsigned char *ptrA = buffer[3];
++			
++			for (int i = 0; i < bh; i++)
++			{
++				unsigned char *src = color_ptr + i * src_lstep;
++				for (int j = 0; j < bw; j++) {
++					ptrR[j] = *src++;
++					ptrG[j] = *src++;
++					ptrB[j] = *src++;
++					ptrA[j] = *src++;
++				}
++				ptrR += *dst_linestep;
++				ptrG += *dst_linestep;
++				ptrB += *dst_linestep;
++				ptrA += *dst_linestep;
++			}
++			break;
++		}
++		
++		default:
++		{
++printf("BufferFormatNormal\n");
++			unsigned char *ptr = *buffer;
++	
++			for (int i = 0; i < bh; i++) {
++				memcpy(ptr, color_ptr + i * src_lstep, bw * 4);
++				ptr += *dst_linestep;
++			}
++			break;
++		}
++		
++	}
++printf("poppler render done\n");
++}
++
+ void Page::setupLinks()
+ {
+   Catalog* catalog = data->doc->data->doc.getCatalog();
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/qt/poppler-qt.h poppler-0.5.1/qt/poppler-qt.h
+--- poppler-0.5.1.orig/qt/poppler-qt.h	2009-03-31 15:48:25.000000000 +0200
++++ poppler-0.5.1/qt/poppler-qt.h	2009-03-31 15:48:25.000000000 +0200
+@@ -138,6 +138,16 @@
+     void renderToPixmap(QPixmap **q, int x, int y, int w, int h, double xres, double yres);
+     void renderToImageScaled(QImage **q, int hDpi, int vDpi, bool (*abortCheckCbk)(void *data) = 0,
+              void *abortCheckCbkData = 0);
++
++    enum {BufferFormatNormal=0, BufferFormatInterleavedRgb, BufferFormatInterleavedRgba};
++    
++	void renderToBufferScaled(unsigned char *buffer[], int *num_bytes, int *scan_line, int *w, int *h, int fmt, int hDpi, int vDpi, 
++		int (*memoryAllocator)(unsigned char *buffer[], int *scan_line, int w, int h, int fmt, void *ctx),
++		void *ctx,
++		bool (*abortCheckCbk)(void *data),
++		void *abortCheckCbkData);
++
++
+     void getPagePreview(QImage **q);
+ 
+     /**
+@@ -199,7 +209,7 @@
+ 
+     bool isLink(int x, int y);
+     int linkDest(double x, double y) const;
+-    Poppler::Links Page::getLinks();
++    Poppler::Links getLinks();
+     int linkId(double x, double y) const;
+     QPoint translatePoint(int x1, int y1) const;
+ 

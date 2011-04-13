@@ -1,0 +1,120 @@
+Index: cvs-6.4/gdb/arm-linux-tdep.c
+===================================================================
+--- cvs-6.4.orig/gdb/arm-linux-tdep.c	2006-02-24 03:22:21.000000000 -0500
++++ cvs-6.4/gdb/arm-linux-tdep.c	2006-02-24 05:51:21.819726224 -0500
+@@ -33,6 +33,7 @@
+ #include "osabi.h"
+ #include "trad-frame.h"
+ #include "tramp-frame.h"
++#include "regset.h"
+ 
+ #include "arm-tdep.h"
+ #include "glibc-tdep.h"
+@@ -230,6 +231,18 @@
+ #define ARM_SET_R7_RT_SIGRETURN		0xe3a070ad
+ #define ARM_EABI_SYSCALL		0xef000000
+ 
++/* The following enums are used to implement the core file support.  */
++enum {
++  ARM_ELF_NGREG  = 18,      
++  ARM_ELF_NFPREG = 33,
++  ARM_ELF_NVRREG = 33
++};
++
++enum {
++  ARM_ELF_GREGSET_SIZE  = (ARM_ELF_NGREG * 4),
++  ARM_ELF_FPREGSET_SIZE = (ARM_ELF_NFPREG * 12)       
++};
++
+ static void
+ arm_linux_sigtramp_cache (struct frame_info *next_frame,
+ 			  struct trad_frame_cache *this_cache,
+@@ -315,6 +328,69 @@
+   arm_linux_rt_sigreturn_init
+ };
+ 
++/* Supply register REGNUM from the buffer specified by GREGS and LEN
++   in the general-purpose register set REGSET to register cache
++   REGCACHE.  */
++
++void
++arm_linux_supply_gregset (const struct regset *regset,
++                          struct regcache * regcache,
++                          int regnum, const void *gregs, size_t size)
++{
++  int regi;
++  const bfd_byte *buf = gregs;
++
++  for (regi = 0; regi < 16; regi++)
++    regcache_raw_supply(regcache, regi, buf + 4 * regi);
++
++  regcache_raw_supply (regcache, ARM_FPS_REGNUM, buf + 4 * 16);
++  regcache_raw_supply (regcache, ARM_PS_REGNUM, buf + 4 * 17);
++}
++
++static struct regset arm_linux_gregset = {
++  NULL, 
++  arm_linux_supply_gregset
++};
++
++/* Supply register REGNUM from the buffer specified by FPREGS and LEN
++   in the floating-point register set REGSET to register cache
++   REGCACHE.  */
++
++void
++arm_linux_supply_fpregset (const struct regset *regset,
++                           struct regcache * regcache,
++                           int regnum, const void *fpregs, size_t size)
++{
++  int regi;
++  const bfd_byte *buf = fpregs;
++
++  for (regi = 0; regi < 32; regi++)
++     regcache_raw_supply (regcache, FP0_REGNUM + regi, buf + 8 * regi);
++}
++
++static struct regset arm_linux_fpregset = { 
++  NULL, 
++  arm_linux_supply_fpregset 
++};
++
++/* Return the appropriate register set for the core section identified
++   by SECT_NAME and SECT_SIZE.  */
++
++static const struct regset *
++arm_linux_regset_from_core_section (struct gdbarch *core_arch,
++                                    const char *sect_name, size_t sect_size)
++{
++  struct gdbarch_tdep *tdep = gdbarch_tdep (core_arch);
++
++  if (strcmp (sect_name, ".reg") == 0 && sect_size == ARM_ELF_GREGSET_SIZE)
++    return &arm_linux_gregset;
++  
++  if (strcmp (sect_name, ".reg2") == 0 && sect_size == ARM_ELF_FPREGSET_SIZE)
++    return &arm_linux_fpregset;
++
++  return NULL;
++}
++
+ static void
+ arm_linux_init_abi (struct gdbarch_info info,
+ 		    struct gdbarch *gdbarch)
+@@ -361,6 +437,9 @@
+   set_gdbarch_fetch_tls_load_module_address (gdbarch,
+                                              svr4_fetch_objfile_link_map);
+ 
++  set_gdbarch_regset_from_core_section
++    (gdbarch, arm_linux_regset_from_core_section);
++
+   tramp_frame_prepend_unwinder (gdbarch,
+ 				&arm_linux_sigreturn_tramp_frame);
+   tramp_frame_prepend_unwinder (gdbarch,
+Index: cvs-6.4/gdb/config/arm/linux.mt
+===================================================================
+--- cvs-6.4.orig/gdb/config/arm/linux.mt	2006-02-24 03:22:21.000000000 -0500
++++ cvs-6.4/gdb/config/arm/linux.mt	2006-02-24 03:22:27.000000000 -0500
+@@ -1,3 +1,3 @@
+ # Target: ARM based machine running GNU/Linux
+ DEPRECATED_TM_FILE= tm-linux.h
+-TDEPFILES= arm-tdep.o arm-linux-tdep.o glibc-tdep.o solib.o solib-svr4.o solib-legacy.o symfile-mem.o
++TDEPFILES= arm-tdep.o arm-linux-tdep.o glibc-tdep.o solib.o solib-svr4.o solib-legacy.o symfile-mem.o corelow.o

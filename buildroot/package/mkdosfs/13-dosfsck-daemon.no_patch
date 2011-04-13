@@ -1,0 +1,265 @@
+diff -r -u dosfstools-2.11/dosfsck/check.c dosfstools-2.11_new/dosfsck/check.c
+--- dosfstools-2.11/dosfsck/check.c	2008-06-23 14:49:40.000000000 +0200
++++ dosfstools-2.11_new/dosfsck/check.c	2008-06-23 15:08:08.000000000 +0200
+@@ -11,6 +11,7 @@
+ #include <string.h>
+ #include <limits.h>
+ #include <time.h>
++#include <unistd.h>
+ 
+ #include "common.h"
+ #include "dosfsck.h"
+@@ -451,6 +452,7 @@
+         if (checked_clusters > last_print_cluster + cluster_step) {
+             last_print_cluster = checked_clusters;
+             fprintf(stderr, "%lu\n", checked_clusters);
++            send_ctrl(checked_clusters/cluster_step, STATUS_PENDING);
+         }
+ 	if (!fs->fat[curr].value || bad_cluster(fs,curr)) {
+ 	    printf("%s\n  Contains a %s cluster (%lu). Assuming EOF.\n",
+diff -r -u dosfstools-2.11/dosfsck/common.c dosfstools-2.11_new/dosfsck/common.c
+--- dosfstools-2.11/dosfsck/common.c	2008-06-23 14:49:40.000000000 +0200
++++ dosfstools-2.11_new/dosfsck/common.c	2008-06-23 14:53:57.000000000 +0200
+@@ -22,6 +22,7 @@
+ #include <fcntl.h>
+ 
+ #include "common.h"
++#include "dosfsck.h"
+ 
+ /* pointers to current larger allocation block used for small allocations */
+ static void *block_head = NULL;
+@@ -45,6 +46,8 @@
+     vfprintf(stderr,msg,args);
+     va_end(args);
+     fprintf(stderr,"\n");
++
++    send_ctrl(100, STATUS_ERR_GENERIC);
+     exit(1);
+ }
+ 
+@@ -113,17 +116,20 @@
+     void *data = 0;
+ 
+     if( swap_fd != -1 ){
++        send_ctrl(100, STATUS_BAD_SWAPFILE);
+         die("cannot malloc twice mmap\n");
+     }
+ 
+     fd = open(swap_file, O_RDWR | O_CREAT, 0600);
+     if( fd == -1 ){
++        send_ctrl(100, STATUS_BAD_SWAPFILE);
+         die("cannot open swap file %s\n", swap_file);
+     }
+ 
+     lseek( fd, size - 1, SEEK_SET );
+ 
+     if( write( fd, "", 1 ) != 1 ){
++        send_ctrl(100, STATUS_OOM);
+         die("cannot create a swap file of %d bytes\n", size);
+     }
+ 
+Seulement dans dosfstools-2.11_new/dosfsck: dosfsck
+diff -r -u dosfstools-2.11/dosfsck/dosfsck.c dosfstools-2.11_new/dosfsck/dosfsck.c
+--- dosfstools-2.11/dosfsck/dosfsck.c	2008-06-23 14:49:40.000000000 +0200
++++ dosfstools-2.11_new/dosfsck/dosfsck.c	2008-06-23 15:13:12.000000000 +0200
+@@ -14,6 +14,10 @@
+ #include <stdlib.h>
+ #include <unistd.h>
+ #include <getopt.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <signal.h>
+ 
+ #include "common.h"
+ #include "dosfsck.h"
+@@ -24,6 +28,9 @@
+ #include "check.h"
+ 
+ 
++#define WORKING_DIR  "/tmp/"
++#define CTRL_FILE    "/tmp/dosfsck_control"
++
+ int interactive = 0,list = 0,test = 0,verbose = 0,write_immed = 0;
+ int atari_format = 0;
+ unsigned n_files = 0;
+@@ -34,6 +41,7 @@
+ char *swap_file;
+ int swap_fd = -1;
+ int swap_size;
++int ctrlfd;
+ 
+ static void usage(char *name)
+ {
+@@ -85,13 +93,98 @@
+ #endif
+ }
+ 
++static void signal_handler(int sig)
++{
++	switch(sig) {
++		case SIGHUP :
++			fprintf(stderr, "hangup signal received\n");
++			// rehash server
++			break;
++		case SIGTERM :
++			fprintf(stderr, "terminate signal received\n");
++			break;
++	}
++}
++
++void daemonize( void )
++{
++	// child (daemon) continues
++	setsid();                                                // obtain a new process group
++	int i;
++	for(i= getdtablesize(); i >= 0; --i)                     // close all descriptors
++		close(i);
++
++	umask(027);                                              // set newly created file permissions
++	chdir(WORKING_DIR);                                      // change working directory
++
++	open("/dev/null", O_RDWR);                               // open stdin  on /dev/null
++	open("/dev/null", O_RDWR | O_CREAT | O_APPEND, 0640);      // open stdout
++	open("/dev/null", O_RDWR | O_CREAT | O_APPEND, 0640);      // open stderr
++
++	signal(SIGCHLD, SIG_IGN);                                // ignore child
++	signal(SIGTSTP, SIG_IGN);                                // ignore tty signals
++	signal(SIGTTOU, SIG_IGN);
++	signal(SIGTTIN, SIG_IGN);
++	signal(SIGHUP,  signal_handler);                         // catch hangup signal
++	signal(SIGTERM, signal_handler);                         // catch kill signal
++}
++
++void send_ctrl(int progress, int done)
++{
++	int maxfd;
++	fd_set writefds;
++
++	struct ctrl_str ctrl = 
++	{
++		.magic = MKDOSFS_MAGIC,
++		.progress = progress,
++		.done = done,
++	};
++
++	FD_ZERO( &writefds );
++	
++	FD_SET( ctrlfd, &writefds );
++	maxfd = ctrlfd + 1;
++
++	struct timeval timeout;
++	timeout.tv_sec  = 0;
++	timeout.tv_usec = 500000;
++	
++	select(maxfd, NULL, &writefds, NULL, &timeout);
++
++ 	if ( FD_ISSET(ctrlfd, &writefds) ) {
++		write(ctrlfd, (void *)&ctrl, sizeof( ctrl ));
++	} else {
++fprintf(stderr, "_send_progress timeout\n");
++	}
++}
+ 
+ int main(int argc,char **argv)
+ {
+     DOS_FS fs;
+     int rw,salvage_files,verify,c;
+     unsigned long free_clusters;
+-    
++
++    mkfifo(CTRL_FILE, S_IRUSR | S_IWUSR | S_IWGRP | S_IWOTH);
++
++    int pid= fork();
++    if(pid < 0) {
++    	exit(1); // fork error
++
++    } else if(pid > 0) {
++    	//parent process
++    	exit(0);
++    } 
++
++    // child process
++    daemonize();
++
++    ctrlfd = open( CTRL_FILE, O_RDWR );
++    if( ctrlfd == -1 ){
++      printf("cannot open ctrl file\n");
++      exit(1);
++    }
++
+     rw = salvage_files = verify = 0;
+     interactive = 1;
+     check_atari();
+@@ -156,6 +249,7 @@
+     printf( "dosfsck " VERSION ", " VERSION_DATE ", FAT32, LFN\n" );
+     fs_open(argv[optind],rw);
+     read_boot(&fs);
++    send_ctrl(0, STATUS_PENDING);
+     fprintf(stderr, "alleged total clusters: %lu\n", fs.clusters);
+     cluster_step = fs.clusters / 100;
+     if (verify) printf("Starting check/repair pass.\n");
+@@ -189,6 +283,11 @@
+ 	    n_files, fs.clusters - free_clusters, fs.clusters );
+ 
+     fs_close(rw);
++
++    send_ctrl(100, STATUS_OK);
++
++    close(ctrlfd);
++
+     return 0;
+ }
+ 
+diff -r -u dosfstools-2.11/dosfsck/dosfsck.h dosfstools-2.11_new/dosfsck/dosfsck.h
+--- dosfstools-2.11/dosfsck/dosfsck.h	2008-06-23 14:49:40.000000000 +0200
++++ dosfstools-2.11_new/dosfsck/dosfsck.h	2008-06-23 15:07:16.000000000 +0200
+@@ -157,6 +157,21 @@
+ /* return -16 as a number with fs->fat_bits bits */
+ #define FAT_EXTD(fs)	(((1 << fs->eff_fat_bits)-1) & ~0xf)
+ 
++#define STATUS_PENDING		0
++#define STATUS_OK		1
++#define STATUS_BAD_SWAPFILE	2
++#define STATUS_OOM		3
++#define STATUS_ERR_GENERIC	4
++
++#define MKDOSFS_MAGIC	0xdeadbeef
++struct ctrl_str {
++	int magic;
++	int progress;
++	int done;
++};
++
++void send_ctrl(int progress, int done);
++
+ #endif
+ 
+ /* Local Variables: */
+diff -r -u dosfstools-2.11/dosfsck/fat.c dosfstools-2.11_new/dosfsck/fat.c
+--- dosfstools-2.11/dosfsck/fat.c	2008-06-23 14:49:40.000000000 +0200
++++ dosfstools-2.11_new/dosfsck/fat.c	2008-06-23 14:48:54.000000000 +0200
+@@ -61,7 +61,7 @@
+     first = alloc(eff_size);
+     fs_read(fs->fat_start,eff_size,first);
+     if (fs->nfats > 1) {
+-	second = alloc_mmap(eff_size);
++	second = swap_file ? alloc_mmap(eff_size) : alloc(eff_size);
+ 	fs_read(fs->fat_start+fs->fat_size,eff_size,second);
+     }
+     else
+diff -r -u dosfstools-2.11/Makefile dosfstools-2.11_new/Makefile
+--- dosfstools-2.11/Makefile	2008-06-23 14:49:40.000000000 +0200
++++ dosfstools-2.11_new/Makefile	2008-06-23 14:48:54.000000000 +0200
+@@ -10,8 +10,8 @@
+ 
+ CPP = $(CC) -E
+ OPTFLAGS = -O2 -fomit-frame-pointer -D_FILE_OFFSET_BITS=64
+-WARNFLAGS = -Wall
+-DEBUGFLAGS = 
++WARNFLAGS = -Wall -Wno-pointer-sign
++DEBUGFLAGS =
+ CFLAGS = $(OPTFLAGS) $(WARNFLAGS) $(DEBUGFLAGS)
+ LDFLAGS =
+ 
+Seulement dans dosfstools-2.11_new/mkdosfs: mkdosfs

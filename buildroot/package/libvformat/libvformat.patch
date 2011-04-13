@@ -1,0 +1,163 @@
+diff -ru libvformat-1.13.orig/src/vf_access_wrappers.c libvformat-1.13/src/vf_access_wrappers.c
+--- libvformat-1.13.orig/src/vf_access_wrappers.c	2007-11-29 12:15:34.000000000 +0100
++++ libvformat-1.13/src/vf_access_wrappers.c	2007-12-12 13:56:50.000000000 +0100
+@@ -163,6 +163,16 @@
+     return p_ret;
+ }
+ 
++uint32_t vf_get_prop_value_count(
++    VF_PROP_T *p_prop
++    )
++{
++    VPROP_T *p_vprop = (VPROP_T *)p_prop;
++    if (p_vprop->value.v.s.pp_strings)
++        return p_vprop->value.v.s.n_strings;
++    else
++        return 0;
++}
+ 
+ 
+ 
+@@ -356,6 +366,16 @@
+     return p_ret;
+ }
+ 
++uint32_t vf_get_prop_name_count(
++    VF_PROP_T *p_prop
++    )
++{
++    VPROP_T *p_vprop = (VPROP_T *)p_prop;
++    if (p_vprop->name.pp_strings)
++        return p_vprop->name.n_strings;
++    else
++        return 0;
++}
+ 
+ 
+ 
+diff -ru libvformat-1.13.orig/src/vf_search.c libvformat-1.13/src/vf_search.c
+--- libvformat-1.13.orig/src/vf_search.c	2007-11-29 12:15:34.000000000 +0100
++++ libvformat-1.13/src/vf_search.c	2007-12-12 13:15:47.000000000 +0100
+@@ -64,6 +64,7 @@
+  ANSI C & System-wide Header Files
+  *============================================================================*/
+ 
++#include <stdio.h>
+ 
+ /*===========================================================================*
+  Interface Header Files
+@@ -264,8 +265,15 @@
+                  */
+                 for (i = 0;found && (i < MAXNUMTAGS) && pp_tags[i];i++)
+                 {
+-                    if (0 != p_strcmp(VFP_ANY, pp_tags[i]))
+-                        found &= string_array_contains_string(&p_props->name, NULL, -1, pp_tags[i], TRUE);
++                    if (0 != p_strcmp(VFP_ANY, pp_tags[i])) {
++                        bool_t found_no_type=string_array_contains_string(&p_props->name, NULL, -1, pp_tags[i], TRUE);
++                        if (found_no_type == FALSE) {
++                            char buffer[64];
++                            snprintf(buffer, 63, "TYPE=%s", pp_tags[i]);
++                            buffer[63] = '\0';
++                            found&=string_array_contains_string(&p_props->name, NULL, -1, buffer, TRUE);
++                        }
++                    }
+                 }
+                 if (p_group && found)
+                 {
+@@ -443,6 +451,25 @@
+     return ret;
+ }
+ 
++/*---------------------------------------------------------------------------*
++ * NAME
++ *      vf_set_next_object()
++ * 
++ * DESCRIPTION
++ *      Set "next" vobject.
++ *
++ *---------------------------------------------------------------------------*/
++
++void vf_set_next_object(
++    VF_OBJECT_T *object,
++    const VF_OBJECT_T *next
++    )
++{
++    if (object)
++    {
++       ((VOBJECT_T *)(object))->p_next = (VOBJECT_T *)next;
++    }
++}
+ 
+ 
+ 
+diff -ru libvformat-1.13.orig/vformat/vf_iface.h libvformat-1.13/vformat/vf_iface.h
+--- libvformat-1.13.orig/vformat/vf_iface.h	2007-11-29 12:15:34.000000000 +0100
++++ libvformat-1.13/vformat/vf_iface.h	2007-12-12 13:33:50.000000000 +0100
+@@ -688,6 +688,20 @@
+     VF_OBJECT_T **pp_object         /* Ptr to pointer to current object */
+     );
+ 
++/*---------------------------------------------------------------------------*
++ * NAME
++ *      vf_set_next_object()
++ * 
++ * DESCRIPTION
++ *      Sets "next" vobject.
++ *
++ *---------------------------------------------------------------------------*/
++
++extern VFORMATDECLSPEC void vf_set_next_object(
++    VF_OBJECT_T *object,         /* Pointer to current object */
++    const VF_OBJECT_T *next      /* Pointer to next object */
++    );
++
+ 
+ 
+ /*---------------------------------------------------------------------------*
+@@ -909,6 +923,23 @@
+     uint32_t n_string               /* Index to string requred */
+     );
+ 
++/*---------------------------------------------------------------------------*
++ * NAME
++ *      vf_get_prop_value_count()
++ * 
++ * DESCRIPTION
++ *      Get number of value strings.
++ *
++ *      Some strings might be NULL, e.g. value 1 in X:0;;2
++ *
++ * RETURNS
++ *      Property value strings count
++ *---------------------------------------------------------------------------*/
++
++extern VFORMATDECLSPEC uint32_t vf_get_prop_value_count(
++    VF_PROP_T *p_prop              /* Property to locate string from */
++    );
++
+ 
+ 
+ /*---------------------------------------------------------------------------*
+@@ -934,6 +965,22 @@
+     uint32_t n_string               /* Index to string requred */
+     );
+ 
++/*---------------------------------------------------------------------------*
++ * NAME
++ *      vf_get_prop_name_count()
++ * 
++ * DESCRIPTION
++ *      Get number of name strings.
++ *
++ *      Some strings might be NULL, e.g. name 1 in X;A;;C:foo
++ *
++ * RETURNS
++ *      Property name strings count
++ *---------------------------------------------------------------------------*/
++
++extern VFORMATDECLSPEC uint32_t vf_get_prop_name_count(
++    VF_PROP_T *p_prop              /* Property to locate string from */
++    );
+ 
+ 
+ /*---------------------------------------------------------------------------*

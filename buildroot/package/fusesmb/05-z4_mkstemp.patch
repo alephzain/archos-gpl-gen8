@@ -1,0 +1,15 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/cache.c fusesmb-0.8.7/cache.c
+--- fusesmb-0.8.7.orig/cache.c	2009-04-01 12:31:39.000000000 +0200
++++ fusesmb-0.8.7/cache.c	2009-04-01 12:31:39.000000000 +0200
+@@ -507,9 +507,9 @@
+     char cachefile[1024];
+     char tmp_cachefile[1024];
+ #ifndef ARCHOS
+-    snprintf(tmp_cachefile, 1024, "%s/.smb/fusesmb.cache.XXXXX", getenv("HOME"));
++    snprintf(tmp_cachefile, 1024, "%s/.smb/fusesmb.cache.XXXXXX", getenv("HOME"));
+ #else
+-    snprintf(tmp_cachefile, 1024, "/var/cache/fusesmb.cache.XXXXX");
++    snprintf(tmp_cachefile, 1024, "/var/cache/fusesmb.cache.XXXXXX");
+ #endif
+     mkstemp(tmp_cachefile);
+ #ifndef ARCHOS

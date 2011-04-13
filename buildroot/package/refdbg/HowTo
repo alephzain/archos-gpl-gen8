@@ -1,0 +1,11 @@
+REFDBG_OPTIONS="btnum=16 ; logobjs=1 ; logexit=1 ; savelog" LD_PRELOAD=/usr/lib/librefdbg.so:/lib/libglib-2.0.so:/lib/libgthread-2.0.so:/lib/libgobject-2.0.so:/usr/lib/libcamel-lite-1.2.so gdb avos
+
+
+REFDBG_CAMEL_OPTIONS="btnum=16 ; logobjs=1 ; logexit=1 ; savelog" LD_PRELOAD=/usr/lib/librefdbg-camel.so:/lib/libglib-2.0.so:/lib/libgthread-2.0.so:/lib/libgobject-2.0.so:/usr/lib/libcamel-lite-1.2.so gdb avos
+
+G_SLICE=always-malloc G_DEBUG=gc-friendly,resident-modules valgrind --num-callers=64
+
+
+REFDBG_OPTIONS="btnum=16 ; logobjs=1 ; r0 = <TnyCamelStoreAccount> D:Error B:None L:All ; logexit=1 ; savelog" LD_PRELOAD=/usr/lib/librefdbg.so:/lib/libglib-2.0.so:/lib/libgthread-2.0.so:/lib/libgobject-2.0.so:/usr/lib/libcamel-lite-1.2.so gdb avos
+
+strace -etrace=mmap,munmap avos

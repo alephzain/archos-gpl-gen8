@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBGSF
+	bool "libgsf"
+	default n
+	depends on BR2_PACKAGE_LIBXML2
+	depends on BR2_PACKAGE_LIBGLIB2
+	depends on BR2_PACKAGE_ZLIB
+	help
+		'libgsf' is a simple i/o library that can read and write common file types and handle structured formats that provide file-system-in-a-file semantics.
+		Used by wv

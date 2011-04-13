@@ -1,0 +1,38 @@
+diff -ruN dosfstools-2.11-orig//dosfsck/Makefile dosfstools-2.11/dosfsck/Makefile
+--- dosfstools-2.11-orig//dosfsck/Makefile	1999-07-06 16:23:11.000000000 +0200
++++ dosfstools-2.11/dosfsck/Makefile	2010-08-18 17:37:52.000000000 +0200
+@@ -1,11 +1,14 @@
+ 
+ OBJECTS = boot.o check.o common.o dosfsck.o fat.o file.o io.o lfn.o
+ 
+-all: dosfsck
++all: dosfsck dosfsck.static
+ 
+ dosfsck: $(OBJECTS)
+ 	$(CC) -o $@ $(LDFLAGS) $^
+ 
++dosfsck.static: $(OBJECTS)
++	$(CC) -o $@ -static $(LDFLAGS) $^
++
+ .c.o:
+ 	$(CC) -c $(CFLAGS) $*.c
+ 
+diff -ruN dosfstools-2.11-orig//mkdosfs/Makefile dosfstools-2.11/mkdosfs/Makefile
+--- dosfstools-2.11-orig//mkdosfs/Makefile	1999-07-06 16:23:32.000000000 +0200
++++ dosfstools-2.11/mkdosfs/Makefile	2010-08-18 17:37:20.000000000 +0200
+@@ -1,11 +1,14 @@
+ 
+ OBJECTS = mkdosfs.o
+ 
+-all: mkdosfs
++all: mkdosfs mkdosfs.static
+ 
+ mkdosfs: $(OBJECTS)
+ 	$(CC) $(LDFLAGS) $^ -o $@
+ 
++mkdosfs.static: $(OBJECTS)
++	$(CC) -static $(LDFLAGS) $^ -o $@
++
+ .c.o:
+ 	$(CC) $(CFLAGS) -c $< -o $@
+ 

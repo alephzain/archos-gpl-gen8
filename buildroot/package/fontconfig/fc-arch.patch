@@ -1,0 +1,19 @@
+--- fontconfig-2.4.2/fc-arch/fc-arch.c	2006-09-04 00:37:14.000000000 +0200
++++ fontconfig-2.4.2_vp/fc-arch/fc-arch.c	2008-05-13 22:30:31.000000000 +0200
+@@ -72,10 +72,14 @@
+     char		*arch = NULL;
+     int			lineno = 0;
+     
+-    if (argc != 2)
++    if (argc != 2) {
+ 	fprintf (stderr, "Usage: %s <architecture>|auto < fcarch.tmpl.h > fcarch.h\n",
+ 		 argv[0]);
+-    arch = argv[1];
++   	arch = "auto";
++    }  else {
++    	arch = argv[1];
++    }
++    
+     /*
+      * Scan the input until the marker is found
+      */

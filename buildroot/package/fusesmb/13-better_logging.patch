@@ -1,0 +1,51 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/smbctx.c fusesmb-0.8.7/smbctx.c
+--- fusesmb-0.8.7.orig/smbctx.c	2009-04-01 11:59:02.000000000 +0200
++++ fusesmb-0.8.7/smbctx.c	2009-04-01 12:05:07.000000000 +0200
+@@ -21,10 +21,13 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <ctype.h>
++#include <syslog.h>
+ #include "smbctx.h"
+ #include "apopen.h"
+ #include "debug.h"
+ 
++#define DBG if (0)
++
+ #  define index(s,c) strchr((s), (c))
+ #  define rindex(s,c) strrchr((s), (c))
+ 
+@@ -38,6 +41,8 @@
+     FILE *pipe = apopen(ipcmd, "r");
+     if (NULL == pipe)
+         return -1;
++
++    DBG syslog(LOG_DEBUG, "%s: calling \"%s\"\n", __FUNCTION__, ipcmd);
+     while (!feof(pipe))
+     {
+         char buf2[4096];
+@@ -96,6 +101,7 @@
+                             char *username, int unmaxlen,
+                             char *password, int pwmaxlen)
+ {
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     (void)workgroup;
+     (void)wgmaxlen;
+ 
+@@ -187,7 +193,7 @@
+         fprintf(stderr, "empty server name");
+         return;
+     }
+-    debug("server: %s : share: %s : workgroup: %s", server, share, workgroup);
++DBG syslog(LOG_DEBUG, "Server: %s : Share: %s : Workgroup: %s\n", server, share, workgroup);
+ 
+     /* Convert ip to server name */
+     if ( !isdigit(server[0]) ) {
+@@ -196,6 +202,7 @@
+     else {
+         nmblookup1(server, sv, 1024);
+     }
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+ 
+     /* Look for username, password for /SERVER/SHARE in the config file */
+     char sv_section[1024] = "/";

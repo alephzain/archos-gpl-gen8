@@ -1,0 +1,12 @@
+config BR2_PACKAGE_ECORE
+	bool "ecore"
+	default n
+	select BR2_PACKAGE_ICONV
+	select BR2_PACKAGE_TSLIB
+	select BR2_PACKAGE_EINA
+	select BR2_PACKAGE_EET
+	select BR2_PACKAGE_EVAS
+	help
+	  Ecore is the Enlightenment core event abstraction layer library.
+
+	  http://www.enlightenment.org/

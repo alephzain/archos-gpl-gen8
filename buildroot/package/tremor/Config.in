@@ -1,0 +1,5 @@
+config BR2_PACKAGE_TREMOR
+	bool "tremor"
+	default n
+	help
+	  Fixed Point Vorbis decoder

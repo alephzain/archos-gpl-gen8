@@ -1,0 +1,70 @@
+--- a/libtinymail-camel/camel-lite/camel/providers/imap/camel-imap-folder.c	2008-09-30 15:31:38.000000000 +0200
++++ b/libtinymail-camel/camel-lite/camel/providers/imap/camel-imap-folder.c	2008-10-06 10:36:37.000000000 +0200
+@@ -806,12 +806,28 @@
+ }
+ 
+ 
++static GStaticRecMutex gmsgstore_lock = G_STATIC_REC_MUTEX_INIT;
++
+ static void
+ imap_finalize (CamelObject *object)
+ {
+ 	CamelImapFolder *imap_folder = CAMEL_IMAP_FOLDER (object);
+ 	CamelImapStore *store = CAMEL_IMAP_STORE (CAMEL_FOLDER(imap_folder)->parent_store);
+ 
++	if( imap_folder->gmsgstore_signal ){
++		g_source_remove(imap_folder->gmsgstore_signal);
++	}
++
++	g_static_rec_mutex_lock (&gmsgstore_lock);
++	if (imap_folder->gmsgstore) {
++		imap_debug ("No users, Get-Message service dies\n");
++		camel_service_disconnect (CAMEL_SERVICE (imap_folder->gmsgstore),
++				imap_folder->gmsgstore->clean_exit, NULL);
++		camel_object_unref (CAMEL_OBJECT (imap_folder->gmsgstore));
++	}
++
++	g_static_rec_mutex_unlock (&gmsgstore_lock);
++
+ 	imap_folder->do_push_email = FALSE;
+ 
+ 	imap_folder->stopping = TRUE;
+@@ -4575,8 +4591,6 @@
+ 	}
+ }
+ 
+-static GStaticRecMutex gmsgstore_lock = G_STATIC_REC_MUTEX_INIT;
+-
+ static gboolean
+ check_gmsgstore_die (gpointer user_data)
+ {
+@@ -4594,7 +4608,6 @@
+ 					imap_folder->gmsgstore->clean_exit, NULL);
+ 				camel_object_unref (CAMEL_OBJECT (imap_folder->gmsgstore));
+ 				imap_folder->gmsgstore = NULL;
+-				camel_object_unref (imap_folder);
+ 			}
+ 			retval = FALSE;
+ 		}
+@@ -4694,13 +4707,11 @@
+ 		imap_folder->gmsgstore->clean_exit = FALSE;
+ 		imap_folder->gmsgstore_ticks = 0;
+ 		if (ctchecker) {
+-			camel_object_ref (imap_folder);
+ 			imap_folder->gmsgstore_signal = g_timeout_add (1,
+ 				check_gmsgstore_die, imap_folder);
+ 		}
+ 	} else {
+ 		if (ctchecker) {
+-			camel_object_ref (imap_folder);
+ 			imap_folder->gmsgstore_signal = g_timeout_add (1000,
+ 				check_gmsgstore_die, imap_folder);
+ 		}
+@@ -4717,7 +4728,6 @@
+ 	if (imap_folder->gmsgstore) {
+ 		imap_folder->gmsgstore->clean_exit = FALSE;
+ 		imap_folder->gmsgstore_ticks = 0;
+-		camel_object_ref (imap_folder);
+ 		imap_folder->gmsgstore_signal = g_timeout_add (1,
+ 			check_gmsgstore_die, imap_folder);
+ 	}

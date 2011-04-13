@@ -1,0 +1,23 @@
+--- uClibc-0.9.29/Rules.mak_old	2008-05-28 10:25:02.000000000 +0200
++++ uClibc-0.9.29/Rules.mak	2008-05-28 10:27:17.000000000 +0200
+@@ -207,6 +207,7 @@
+ 	CPU_CFLAGS-$(CONFIG_ARM1136JF_S)+=-mtune=arm1136jf-s -march=armv6
+ 	CPU_CFLAGS-$(CONFIG_ARM1176JZ_S)+=-mtune=arm1176jz-s -march=armv6
+ 	CPU_CFLAGS-$(CONFIG_ARM1176JZF_S)+=-mtune=arm1176jzf-s -march=armv6
++	CPU_CFLAGS-$(CONFIG_ARM_CORTEX_A8)+=-mtune=cortex-a8 -march=armv7-a
+ 	CPU_CFLAGS-$(CONFIG_ARM_SA110)+=-mtune=strongarm110 -march=armv4
+ 	CPU_CFLAGS-$(CONFIG_ARM_SA1100)+=-mtune=strongarm1100 -march=armv4
+ 	CPU_CFLAGS-$(CONFIG_ARM_XSCALE)+=$(call check_gcc,-mtune=xscale,-mtune=strongarm110)
+--- uClibc-0.9.29/extra/Configs/Config.arm_old	2008-05-28 10:27:52.000000000 +0200
++++ uClibc-0.9.29/extra/Configs/Config.arm	2008-05-28 10:30:19.000000000 +0200
+@@ -107,6 +107,10 @@
+ 	bool "Arm 1176JZF-S"
+ 	select ARCH_HAS_MMU
+ 
++config CONFIG_ARM_CORTEX_A8
++	bool "Arm Cortex-A8"
++	select ARCH_HAS_MMU
++
+ config CONFIG_ARM_SA110
+ 	bool "Intel StrongArm SA-110"
+ 	select ARCH_HAS_MMU

@@ -1,0 +1,6 @@
+config BR2_PACKAGE_REFDBG_CAMEL
+	bool "refdbg-camel"
+	default n
+	help
+		Library to help debug refcounts in camel
+		http://refdbg.sourceforge.net

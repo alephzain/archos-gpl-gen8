@@ -1,0 +1,130 @@
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/qt/poppler-page.cc poppler-0.5.1/qt/poppler-page.cc
+--- poppler-0.5.1.orig/qt/poppler-page.cc	2006-01-23 15:43:38.000000000 +0100
++++ poppler-0.5.1/qt/poppler-page.cc	2009-03-31 15:48:25.000000000 +0200
+@@ -30,6 +30,8 @@
+ #include "poppler-private.h"
+ #include "poppler-page-transition-private.h"
+ 
++#include <stdio.h>
++
+ namespace Poppler {
+ 
+ class PageData {
+@@ -52,20 +54,20 @@
+   delete data;
+ }
+ 
+-void Page::renderToPixmap(QPixmap **q, int x, int y, int w, int h) const
++void Page::renderToPixmap(QPixmap **q, int x, int y, int w, int h)
+ {
+   renderToPixmap(q, x, y, w, h, 72.0, 72.0);
+ }
+ 
+-void Page::renderToPixmap(QPixmap **q, int x, int y, int w, int h, double xres, double yres) const
++void Page::renderToPixmap(QPixmap **q, int x, int y, int w, int h, double xres, double yres)
+ {
+   QImage img = renderToImage(xres, yres);
+-  *q = new QPixmap( img );
++  *q = new QPixmap();
++  (*q)->convertFromImage(img, Qt::AutoColor);
+ }
+ 
+-QImage Page::renderToImage(double xres, double yres) const
++QImage Page::renderToImage(double xres, double yres)
+ {
+-  SplashOutputDev *output_dev;
+   SplashBitmap *bitmap;
+   SplashColorPtr color_ptr;
+   output_dev = data->doc->data->getOutputDev();
+@@ -74,24 +76,69 @@
+       0, false, false, false, -1, -1, -1, -1);
+   bitmap = output_dev->getBitmap ();
+   color_ptr = bitmap->getDataPtr ();
+-  int bw = output_dev->getBitmap()->getWidth();
+-  int bh = output_dev->getBitmap()->getHeight();
++  int bw = bitmap->getWidth();
++  int bh = bitmap->getHeight();
+ 
+-  QImage img( bw, bh, 32 );
+-  SplashColorPtr pixel = new Guchar[4];
+-  for (int i = 0; i < bw; i++)
+-  {
+-    for (int j = 0; j < bh; j++)
+-    {
+-      output_dev->getBitmap()->getPixel(i, j, pixel);
+-      img.setPixel( i, j, qRgb( pixel[0], pixel[1], pixel[2] ) );
+-    }
+-  }
+-  delete[] pixel;
++  QImage img;
+ 
++  img.create(bw, bh, 32, 0, QImage::IgnoreEndian);
++  int rowSize = output_dev->getBitmap()->getRowSize();
++  printf("qt rowSize = %i", rowSize);
++
++  for (int i = 0; i < bh; i++) {
++      memcpy(img.scanLine(i), color_ptr + i * rowSize, bw * 4);
++  }
+   return img;
+ }
+ 
++// preview is not thread save. may only be used be one thread
++// at a time.
++void Page::getPagePreview(QImage **q)
++{
++    // FIXME: the output_dev must be protected by a lock?
++    SplashBitmap *bitmap;
++    SplashColorPtr color_ptr;
++    output_dev = data->doc->data->getOutputDev();
++    if (output_dev != 0) {
++        bitmap = output_dev->getBitmap ();
++        int bw = bitmap->getWidth();
++        int bh = bitmap->getHeight();
++        color_ptr = bitmap->getDataPtr ();
++        *q = new QImage();
++        (*q)->create(bw, bh, 32, 0, QImage::IgnoreEndian);
++	int rowSize = output_dev->getBitmap()->getRowSize();
++	for (int i = 0; i < bh; i++) {
++		memcpy((*q)->scanLine(i), color_ptr + i * rowSize, bw * 4);
++  	}
++   }
++}
++
++void Page::renderToImageScaled(QImage **q, int hDpi, int vDpi,
++             bool (*abortCheckCbk)(void *data),
++             void *abortCheckCbkData)
++{
++  SplashBitmap *bitmap;
++  SplashColorPtr color_ptr;
++  output_dev = data->doc->data->getOutputDev();
++
++  data->doc->data->doc.displayPageSlice(output_dev, data->index + 1, hDpi, vDpi,
++      0, false, false, false, -1, -1, -1, -1, (GBool (*)(void*))abortCheckCbk,
++                                          abortCheckCbkData);
++
++  bitmap = output_dev->getBitmap ();
++  color_ptr = bitmap->getDataPtr ();
++  int bw = bitmap->getWidth();
++  int bh = bitmap->getHeight();
++
++  *q = new QImage();
++  (*q)->create(bw, bh, 32, 0, QImage::IgnoreEndian);
++  int rowSize = output_dev->getBitmap()->getRowSize();
++
++  for (int i = 0; i < bh; i++) {
++     memcpy((*q)->scanLine(i), color_ptr + i * rowSize, bw * 4);
++  }
++}
++
+ QString Page::getText(const Rectangle &r) const
+ {
+   TextOutputDev *output_dev;
+@@ -99,7 +146,7 @@
+   PDFRectangle *rect;
+   QString result;
+   ::Page *p;
+-  
++
+   output_dev = new TextOutputDev(0, gFalse, gFalse, gFalse);
+   data->doc->data->doc.displayPageSlice(output_dev, data->index + 1, 72, 72,
+       0, false, false, false, -1, -1, -1, -1);

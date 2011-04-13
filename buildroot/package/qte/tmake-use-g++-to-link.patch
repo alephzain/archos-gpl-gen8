@@ -1,0 +1,17 @@
+Use g++ to link, otherwise link will fail because it won't find libstdc++ or
+the delete operator.
+Index: tmake-1.13/lib/qws/linux-arm-g++/tmake.conf
+===================================================================
+--- tmake-1.13.orig/lib/qws/linux-arm-g++/tmake.conf	2008-05-21 14:44:18.714959512 +0200
++++ tmake-1.13/lib/qws/linux-arm-g++/tmake.conf	2008-05-21 14:44:37.820048252 +0200
+@@ -39,8 +39,8 @@
+ TMAKE_INCDIR_OPENGL	= /usr/X11R6/include
+ TMAKE_LIBDIR_OPENGL	= /usr/X11R6/lib
+ 
+-TMAKE_LINK		= arm-linux-gcc
+-TMAKE_LINK_SHLIB	= arm-linux-gcc
++TMAKE_LINK		= arm-linux-g++
++TMAKE_LINK_SHLIB	= arm-linux-g++
+ TMAKE_LFLAGS		=
+ TMAKE_LFLAGS_RELEASE	=
+ TMAKE_LFLAGS_DEBUG	=

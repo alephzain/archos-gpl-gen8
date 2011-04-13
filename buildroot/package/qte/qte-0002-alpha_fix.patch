@@ -1,0 +1,24 @@
+Index: qt-2.3.10/src/kernel/qgfxraster_qws.cpp
+===================================================================
+--- qt-2.3.10.orig/src/kernel/qgfxraster_qws.cpp	2008-05-30 11:07:31.054593801 +0200
++++ qt-2.3.10/src/kernel/qgfxraster_qws.cpp	2008-05-30 11:07:37.342952154 +0200
+@@ -4036,7 +4036,10 @@
+ 	unsigned int *alphaptr = (unsigned int *)alphabuf;
+ 	int loopc;
+ 
+-#ifdef QWS_NO_WRITE_PACKING
++// the write packing code below triggers a bug in one of the gcc optimizers
++// on arm (gcc version 3.4.3)
++// Therefore is simply nail it to the non-packed version.
++#if 1 //def QWS_NO_WRITE_PACKING
+ 	unsigned short int *temppos = myptr + x1;
+ 	for ( int i = 0; i < w; i++ )
+ 	    *(alphaptr++) = get_value_32(16,(unsigned char **)&temppos);
+@@ -4157,6 +4160,7 @@
+ 	  }
+ 	}
+ #else
++	int frontadd, backadd, count, loopc2;
+ 	myptr=(unsigned short int *)l;
+ 	calcPacking(myptr,x1,x2,frontadd,backadd,count);
+ 	myptr+=x1;

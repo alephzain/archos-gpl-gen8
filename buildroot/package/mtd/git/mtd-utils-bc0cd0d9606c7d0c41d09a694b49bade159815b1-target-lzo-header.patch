@@ -1,0 +1,24 @@
+diff -Nur mtd-utils-orig/compr_lzo.c mtd-utils/compr_lzo.c
+--- mtd-utils-orig/compr_lzo.c	2009-06-15 18:57:46.000000000 +0200
++++ mtd-utils/compr_lzo.c	2009-06-15 18:58:00.000000000 +0200
+@@ -26,7 +26,7 @@
+ #include <string.h>
+ #include <asm/types.h>
+ #include <linux/jffs2.h>
+-#include <lzo/lzo1x.h>
++#include <lzo1x.h>
+ #include "compr.h"
+ 
+ extern int page_size;
+diff -Nur mtd-utils-orig/mkfs.ubifs/compr.c mtd-utils/mkfs.ubifs/compr.c
+--- mtd-utils-orig/mkfs.ubifs/compr.c	2009-06-19 11:06:54.000000000 +0200
++++ mtd-utils/mkfs.ubifs/compr.c	2009-06-19 11:07:20.000000000 +0200
+@@ -25,7 +25,7 @@
+ #include <stdint.h>
+ #include <string.h>
+ #include <zlib.h>
+-#include <lzo/lzo1x.h>
++#include <lzo1x.h>
+ #include <linux/types.h>
+ 
+ #include "compr.h"

@@ -1,0 +1,5 @@
+config BR2_PACKAGE_LIBARCHOS_SUPPORT
+        bool "libarchos_support"
+        default n
+        help
+        Archos support library for external (Qt applications), which includes a vkeyboard implementation.

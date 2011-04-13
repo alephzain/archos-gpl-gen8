@@ -1,0 +1,31 @@
+diff -Nur mtd-utils-orig/Makefile mtd-utils/Makefile
+--- mtd-utils-orig/Makefile	2009-06-09 17:01:29.000000000 +0200
++++ mtd-utils/Makefile	2009-06-19 11:02:29.000000000 +0200
+@@ -39,13 +39,13 @@
+ 	crc32.o compr_rtime.o mkfs.jffs2.o compr_zlib.o compr_lzo.o \
+ 	compr.o rbtree.o)
+ LDFLAGS_mkfs.jffs2 = $(ZLIBLDFLAGS) $(LZOLDFLAGS)
+-LDLIBS_mkfs.jffs2  = -lz -llzo2
++LDLIBS_mkfs.jffs2  = -lz -llzo
+ 
+ $(BUILDDIR)/flash_eraseall: $(BUILDDIR)/crc32.o $(BUILDDIR)/flash_eraseall.o
+ 
+ $(BUILDDIR)/jffs2reader: $(BUILDDIR)/jffs2reader.o
+ LDFLAGS_jffs2reader = $(ZLIBLDFLAGS) $(LZOLDFLAGS)
+-LDLIBS_jffs2reader  = -lz -llzo2
++LDLIBS_jffs2reader  = -lz -llzo
+ 
+ $(BUILDDIR)/jffs2dump: $(BUILDDIR)/jffs2dump.o $(BUILDDIR)/crc32.o
+ 
+diff -Nur mtd-utils-orig/mkfs.ubifs/Makefile mtd-utils/mkfs.ubifs/Makefile
+--- mtd-utils-orig/mkfs.ubifs/Makefile	2009-06-19 11:04:55.000000000 +0200
++++ mtd-utils/mkfs.ubifs/Makefile	2009-06-19 11:05:00.000000000 +0200
+@@ -5,7 +5,7 @@
+ 
+ TARGETS = mkfs.ubifs
+ 
+-LDLIBS_mkfs.ubifs = -lz -llzo2 -lm -luuid -L../ubi-utils/ -lubi
++LDLIBS_mkfs.ubifs = -lz -llzo -lm -luuid -L../ubi-utils/ -lubi
+ 
+ include ../common.mk
+ 

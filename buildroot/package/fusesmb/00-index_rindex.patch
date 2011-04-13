@@ -1,0 +1,39 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/cache.c fusesmb-0.8.7/cache.c
+--- fusesmb-0.8.7.orig/cache.c	2006-05-04 22:01:09.000000000 +0200
++++ fusesmb-0.8.7/cache.c	2009-04-01 12:31:39.000000000 +0200
+@@ -38,6 +38,10 @@
+ #include "configfile.h"
+ #include "debug.h"
+ 
++#  define index(s,c) strchr((s), (c))
++#  define rindex(s,c) strrchr((s), (c))
++
++
+ #define MAX_SERVERLEN 255
+ #define MAX_WGLEN 255
+ 
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/configfile.c fusesmb-0.8.7/configfile.c
+--- fusesmb-0.8.7.orig/configfile.c	2006-05-04 22:29:25.000000000 +0200
++++ fusesmb-0.8.7/configfile.c	2009-04-01 12:31:39.000000000 +0200
+@@ -33,6 +33,8 @@
+ #include <ctype.h>
+ #include "configfile.h"
+ 
++#  define index(s,c) strchr((s), (c))
++#  define rindex(s,c) strrchr((s), (c))
+ 
+ static char *strip_whitespace_check_comment(const char *str)
+ {
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/smbctx.c fusesmb-0.8.7/smbctx.c
+--- fusesmb-0.8.7.orig/smbctx.c	2006-08-29 20:34:17.000000000 +0200
++++ fusesmb-0.8.7/smbctx.c	2009-04-01 12:31:39.000000000 +0200
+@@ -23,6 +23,9 @@
+ #include "smbctx.h"
+ #include "debug.h"
+ 
++#  define index(s,c) strchr((s), (c))
++#  define rindex(s,c) strrchr((s), (c))
++
+ config_t *fusesmb_auth_fn_cfg = NULL;
+ pthread_mutex_t *fusesmb_auth_fn_cfg_mutex = NULL;
+ 

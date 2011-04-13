@@ -1,0 +1,5 @@
+config BR2_PACKAGE_GNUTLS
+	bool "gnutls"
+	default n
+	help
+	  gnuTLS, The GNU Transport Layer Security Library 

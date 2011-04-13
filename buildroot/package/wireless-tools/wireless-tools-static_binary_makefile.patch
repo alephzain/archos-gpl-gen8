@@ -1,0 +1,12 @@
+diff -urN wireless_tools.29/Makefile wireless_tools.29/Makefile_static
+--- wireless_tools.29/Makefile  2008-05-21 08:55:08.000000000 +0200
++++ wireless_tools.29/Makefile_static   2008-05-21 08:56:24.000000000 +0200
+@@ -109,6 +109,8 @@
+ XCFLAGS=$(CFLAGS) $(DEPFLAGS) $(WARN) $(HEADERS) $(WELIB_FLAG) $(WEDEF_FLAG)
+ PICFLAG=-fPIC
+
++LDFLAGS += -static
++
+ # Standard compilation targets
+ all:: $(IWLIB) $(PROGS)
+

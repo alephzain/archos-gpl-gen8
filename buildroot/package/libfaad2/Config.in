@@ -1,0 +1,4 @@
+config BR2_PACKAGE_LIBFAAD2
+	bool "libfaad2"
+	default n
+	help

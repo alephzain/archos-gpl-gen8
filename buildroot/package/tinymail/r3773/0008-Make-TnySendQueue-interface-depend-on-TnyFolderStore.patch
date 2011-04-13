@@ -1,0 +1,740 @@
+From 6ed950d68a6d73d2de3944c32677bbfa05b45312 Mon Sep 17 00:00:00 2001
+From: Rob Taylor <rob.taylor@codethink.co.uk>
+Date: Thu, 28 Aug 2008 13:20:28 +0100
+Subject: [PATCH] Make TnySendQueue interface depend on TnyFolderStore
+ Implement TnyFolderStore functionality in TnyCamelSendQueue
+
+---
+ libtinymail-camel/Makefile.am                 |    6 +-
+ libtinymail-camel/observer-mixin.c            |  183 +++++++++++++
+ libtinymail-camel/observer-mixin.h            |   41 +++
+ libtinymail-camel/tny-camel-send-queue-priv.h |    3 +
+ libtinymail-camel/tny-camel-send-queue.c      |  357 ++++++++++++++++++++++++-
+ libtinymail/tny-send-queue.c                  |    2 +
+ 6 files changed, 589 insertions(+), 3 deletions(-)
+ create mode 100644 libtinymail-camel/observer-mixin.c
+ create mode 100644 libtinymail-camel/observer-mixin.h
+
+diff --git a/libtinymail-camel/Makefile.am b/libtinymail-camel/Makefile.am
+index 20f3b76..c3db509 100644
+--- a/libtinymail-camel/Makefile.am
++++ b/libtinymail-camel/Makefile.am
+@@ -60,7 +60,8 @@ libtinymail_camel_priv_headers = \
+ 	tny-camel-queue-priv.h \
+ 	tny-camel-bs-msg-priv.h \
+ 	tny-camel-bs-mime-part-priv.h \
+-	tny-camel-bs-msg-header-priv.h
++	tny-camel-bs-msg-header-priv.h \
++	observer-mixin.h
+ 
+ libtinymail_camel_1_0_la_SOURCES = \
+ 	$(libtinymail_camel_priv_headers) \
+@@ -96,7 +97,8 @@ libtinymail_camel_1_0_la_SOURCES = \
+ 	tny-camel-bs-msg-receive-strategy.c \
+ 	tny-camel-bs-msg-header.c \
+ 	tny-camel-default-connection-policy.c \
+-	tny-camel-recover-connection-policy.c
++	tny-camel-recover-connection-policy.c \
++	observer-mixin.c
+ 
+ libtinymail_camel_1_0_la_LIBADD = \
+ 	$(LIBTINYMAIL_CAMEL_LIBS) \
+diff --git a/libtinymail-camel/observer-mixin.c b/libtinymail-camel/observer-mixin.c
+new file mode 100644
+index 0000000..5c22740
+--- /dev/null
++++ b/libtinymail-camel/observer-mixin.c
+@@ -0,0 +1,183 @@
++/* libtinymail-camel - The Tiny Mail base library for Camel
++ * Copyright (C) 2008 Rob Taylor <rob.taylor@codethink.co.uk>
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with self library; if not, write to the
++ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
++ * Boston, MA 02110-1301, USA.
++ */
++
++#include <config.h>
++
++#include <tny-lockable.h>
++#include <tny-folder-store-observer.h>
++
++#include "observer-mixin.h"
++
++
++void
++_observer_mixin_init (ObserverMixin *mixin)
++{
++	mixin->lock = g_new0 (GStaticRecMutex, 1);
++	g_static_rec_mutex_init (mixin->lock);
++	mixin->list = NULL;
++}
++
++
++void
++_observer_mixin_destroy (gpointer owner, ObserverMixin *mixin)
++{
++	_observer_mixin_remove_all_observers (owner, mixin);
++	g_free (mixin->lock);
++	mixin->lock = NULL;
++}
++
++
++static void
++notify_observer_del (gpointer user_data, GObject *observer)
++{
++	ObserverMixin *mixin = user_data;
++	g_static_rec_mutex_lock (mixin->lock);
++	mixin->list = g_list_remove (mixin->list, observer);
++	g_static_rec_mutex_unlock (mixin->lock);
++}
++
++void
++_observer_mixin_add_observer (gpointer owner, ObserverMixin *mixin, gpointer observer)
++{
++	g_assert (TNY_IS_FOLDER_STORE_OBSERVER (observer));
++
++	g_static_rec_mutex_lock (mixin->lock);
++	if (!g_list_find (mixin->list, observer)) {
++		mixin->list = g_list_prepend (mixin->list, observer);
++		g_object_weak_ref (G_OBJECT (observer), notify_observer_del, (GObject*)owner);
++	}
++	g_static_rec_mutex_unlock (mixin->lock);
++
++	return;
++}
++
++
++void
++_observer_mixin_remove_observer (gpointer owner, ObserverMixin *mixin, gpointer observer)
++{
++	GList *found = NULL;
++
++	g_assert (TNY_IS_FOLDER_STORE_OBSERVER (observer));
++
++	g_static_rec_mutex_lock (mixin->lock);
++
++	if (!mixin->list) {
++		g_static_rec_mutex_unlock (mixin->lock);
++		return;
++	}
++
++	found = g_list_find (mixin->list, observer);
++	if (found) {
++		mixin->list = g_list_remove_link (mixin->list, found);
++		g_object_weak_unref (found->data, notify_observer_del, (GObject*) owner);
++		g_list_free (found);
++	}
++
++	g_static_rec_mutex_unlock (mixin->lock);
++}
++
++void
++_observer_mixin_remove_all_observers (gpointer owner, ObserverMixin *mixin)
++{
++	g_static_rec_mutex_lock (mixin->lock);
++	if (mixin->list) {
++		GList *copy = mixin->list;
++		while (copy) {
++			g_object_weak_unref ((GObject *) copy->data, notify_observer_del, (GObject *) owner);
++			copy = g_list_next (copy);
++		}
++		g_list_free (mixin->list);
++		mixin->list = NULL;
++	}
++	g_static_rec_mutex_unlock (mixin->lock);
++}
++
++typedef struct {
++	GObject *mixin_owner;
++	ObserverMixin *mixin;
++	GObject *change;
++	TnyLockable *ui_lock;
++	ObserverUpdateMethod method;
++	GDestroyNotify notify;
++} NotObInIdleInfo;
++
++static void
++do_notify_in_idle_destroy (gpointer user_data)
++{
++	NotObInIdleInfo *info = (NotObInIdleInfo *) user_data;
++
++	g_object_unref (info->change);
++	if (info->notify)
++		(info->notify)(info->mixin_owner);
++	g_object_unref (info->mixin_owner);
++	g_object_unref (info->ui_lock);
++
++	g_slice_free (NotObInIdleInfo, info);
++}
++
++static void
++notify_observers_about (ObserverMixin *mixin, ObserverUpdateMethod method, gpointer change, TnyLockable *ui_lock)
++{
++	GList *list, *list_iter;
++
++	g_static_rec_mutex_lock (mixin->lock);
++	if (!mixin->list) {
++		g_static_rec_mutex_unlock (mixin->lock);
++		return;
++	}
++	list = g_list_copy (mixin->list);
++	list_iter = list;
++	g_static_rec_mutex_unlock (mixin->lock);
++
++	while (list_iter)
++	{
++		tny_lockable_lock (ui_lock);
++		method (list_iter->data, change);
++		tny_lockable_unlock (ui_lock);
++		list_iter = g_list_next (list_iter);
++	}
++
++	g_list_free (list);
++}
++
++static gboolean
++notify_observers_about_idle (gpointer user_data)
++{
++	NotObInIdleInfo *info = (NotObInIdleInfo *) user_data;
++	notify_observers_about (info->mixin, info->method, info->change, info->ui_lock);
++	return FALSE;
++}
++
++
++void
++_observer_mixin_notify_observers_about_in_idle (gpointer mixin_owner, ObserverMixin *mixin, ObserverUpdateMethod method, gpointer change, TnyLockable *ui_lock, GDestroyNotify done_notify)
++{
++	NotObInIdleInfo *info = g_slice_new (NotObInIdleInfo);
++
++	info->mixin_owner = g_object_ref (mixin_owner);
++	info->mixin = mixin;
++	info->change = g_object_ref (change);
++	info->ui_lock = g_object_ref (ui_lock);
++	info->method = method;
++	info->notify = done_notify;
++
++	g_idle_add_full (G_PRIORITY_HIGH, notify_observers_about_idle,
++		info, do_notify_in_idle_destroy);
++}
++
+diff --git a/libtinymail-camel/observer-mixin.h b/libtinymail-camel/observer-mixin.h
+new file mode 100644
+index 0000000..a1a88de
+--- /dev/null
++++ b/libtinymail-camel/observer-mixin.h
+@@ -0,0 +1,41 @@
++#ifndef OBSERVER_MIXIN_H
++#define OBSERVER_MIXIN_H
++
++/* libtinymail-camel - The Tiny Mail base library for Camel
++ * Copyright (C) 2006-2007 Philip Van Hoof <pvanhoof@gnome.org>
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with self library; if not, write to the
++ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
++ * Boston, MA 02110-1301, USA.
++ */
++
++#include <glib.h>
++#include <glib-object.h>
++
++typedef struct _ObserverMixin {
++	GList *list;
++	GStaticRecMutex *lock;
++} ObserverMixin;
++
++
++typedef void (*ObserverUpdateMethod) (gpointer, gpointer);
++
++void _observer_mixin_init (ObserverMixin *mixin);
++void _observer_mixin_destroy (gpointer owner, ObserverMixin *mixin);
++void _observer_mixin_add_observer (gpointer owner, ObserverMixin *mixin, gpointer observer);
++void _observer_mixin_remove_observer (gpointer owner, ObserverMixin *mixin, gpointer observer);
++void _observer_mixin_remove_all_observers (gpointer owner, ObserverMixin *mixin);
++void _observer_mixin_notify_observers_about_in_idle (gpointer mixin_owner, ObserverMixin *mixin, ObserverUpdateMethod method, gpointer change, TnyLockable *ui_lock, GDestroyNotify done_notify);
++
++#endif
+diff --git a/libtinymail-camel/tny-camel-send-queue-priv.h b/libtinymail-camel/tny-camel-send-queue-priv.h
+index f84a55d..6d1cec6 100644
+--- a/libtinymail-camel/tny-camel-send-queue-priv.h
++++ b/libtinymail-camel/tny-camel-send-queue-priv.h
+@@ -22,6 +22,7 @@
+ 
+ #include <tny-camel-transport-account.h>
+ #include <tny-folder.h>
++#include <observer-mixin.h>
+ 
+ typedef struct _TnyCamelSendQueuePriv TnyCamelSendQueuePriv;
+ 
+@@ -36,6 +37,8 @@ struct _TnyCamelSendQueuePriv
+ 	gboolean do_continue, is_running;
+ 	gboolean observer_attached;
+ 	gint pending_send_notifies;
++	ObserverMixin store_observers;
++	gboolean first_refresh_happened;
+ };
+ 
+ #endif
+diff --git a/libtinymail-camel/tny-camel-send-queue.c b/libtinymail-camel/tny-camel-send-queue.c
+index 102108a..5fea935 100644
+--- a/libtinymail-camel/tny-camel-send-queue.c
++++ b/libtinymail-camel/tny-camel-send-queue.c
+@@ -1,5 +1,6 @@
+ /* libtinymail-camel - The Tiny Mail base library for Camel
+  * Copyright (C) 2006-2007 Philip Van Hoof <pvanhoof@gnome.org>
++ * Copyright (C) 2008 Rob Taylor <rob.taylor@codethink.co.uk>
+  *
+  * This library is free software; you can redistribute it and/or
+  * modify it under the terms of the GNU Lesser General Public
+@@ -35,6 +36,9 @@
+ #include <tny-store-account.h>
+ #include <tny-camel-store-account.h>
+ #include <tny-folder-observer.h>
++#include <tny-folder-store.h>
++#include <tny-folder-store-change.h>
++#include <tny-folder-store-observer.h>
+ 
+ static GObjectClass *parent_class = NULL;
+ 
+@@ -959,6 +963,327 @@ tny_camel_send_queue_cancel_default (TnySendQueue *self, TnySendQueueCancelActio
+ }
+ 
+ 
++
++static void
++tny_camel_send_queue_remove_folder (TnyFolderStore *self, TnyFolder *folder, GError **err)
++{
++	g_set_error (err, TNY_ERROR_DOMAIN,
++			TNY_SERVICE_ERROR_UNSUPPORTED,
++			"You can't use the tny_folder_store_remove_folder API "
++			"on send queues. This problem indicates a bug in the "
++			"software.");
++
++	return;
++}
++
++static TnyFolder*
++tny_camel_send_queue_create_folder (TnyFolderStore *self, const gchar *name, GError **err)
++{
++	g_set_error (err, TNY_ERROR_DOMAIN,
++			TNY_SERVICE_ERROR_UNSUPPORTED,
++			"You can't use the tny_folder_store_create_folder "
++			"API on send queues. This problem indicates a "
++			"bug in the software.");
++
++	return NULL;
++}
++
++typedef struct
++{
++	TnyFolderStore *self;
++	gchar *name;
++	TnyCreateFolderCallback callback;
++	gpointer user_data;
++} CreateFolderInfo;
++
++static gboolean
++tny_camel_send_queue_create_folder_async_callback (gpointer user_data)
++{
++	CreateFolderInfo *info = user_data;
++	if (info->callback) {
++		GError *err;
++		err = g_error_new (TNY_ERROR_DOMAIN,
++				   TNY_SERVICE_ERROR_UNSUPPORTED,
++				   "You can't use the tny_folder_store_create_folder "
++				   "API on send queues. This problem indicates a "
++				   "bug in the software.");
++
++
++		//tny_lockable_lock (info->session->priv->ui_lock);
++		info->callback (info->self, FALSE, NULL, err, info->user_data);
++		//tny_lockable_unlock (info->session->priv->ui_lock);
++		g_error_free (err);
++	}
++	g_slice_free (CreateFolderInfo, info);
++
++	return FALSE;
++}
++
++static void
++tny_camel_send_queue_create_folder_async (TnyFolderStore *self, const gchar *name, TnyCreateFolderCallback callback, TnyStatusCallback status_callback, gpointer user_data)
++{
++	CreateFolderInfo *info;
++
++	/* Idle info for the callbacks */
++	info = g_slice_new (CreateFolderInfo);
++	info->self = self;
++	info->name = g_strdup (name);
++	info->callback = callback;
++	info->user_data = user_data;
++
++	g_object_ref (info->self);
++
++	g_idle_add (tny_camel_send_queue_create_folder_async_callback, info);
++	return;
++}
++
++
++static void
++tny_camel_send_queue_add_observer (TnyFolderStore *self, TnyFolderStoreObserver *observer)
++{
++	TnyCamelSendQueuePriv *priv = TNY_CAMEL_SEND_QUEUE_GET_PRIVATE (self);
++
++	_observer_mixin_add_observer (self, &(priv->store_observers), observer);
++}
++
++static void
++tny_camel_send_queue_remove_observer (TnyFolderStore *self, TnyFolderStoreObserver *observer)
++{
++	TnyCamelSendQueuePriv *priv = TNY_CAMEL_SEND_QUEUE_GET_PRIVATE (self);
++
++	_observer_mixin_remove_observer (self, &(priv->store_observers), observer);
++}
++
++static void
++refresh_observers (TnyCamelSendQueue *self)
++{
++	TnyCamelSendQueuePriv *priv = TNY_CAMEL_SEND_QUEUE_GET_PRIVATE (self);
++	TnyCamelAccountPriv *apriv = TNY_CAMEL_ACCOUNT_GET_PRIVATE (TNY_CAMEL_ACCOUNT (priv->trans_account));
++	TnySessionCamel *session = apriv->session;
++
++	if (!priv->first_refresh_happened) {
++		TnyFolderStoreChange *change;
++
++		change = tny_folder_store_change_new (TNY_FOLDER_STORE(self));
++		tny_folder_store_change_add_appeared_folder (change,
++				tny_send_queue_get_outbox(TNY_SEND_QUEUE(self)));
++		tny_folder_store_change_add_appeared_folder (change,
++				tny_send_queue_get_sentbox(TNY_SEND_QUEUE(self)));
++
++		_observer_mixin_notify_observers_about_in_idle (self, &(priv->store_observers), (ObserverUpdateMethod) tny_folder_store_observer_update, change, session->priv->ui_lock, NULL);
++		priv->first_refresh_happened = TRUE;
++	}
++}
++
++static void
++tny_camel_send_queue_get_folders (TnyFolderStore *store, TnyList *list, TnyFolderStoreQuery *query, gboolean refresh, GError **err)
++{
++	TnySendQueue *self = TNY_SEND_QUEUE (store);
++
++	gboolean cant_reuse_iter = TRUE;
++
++	g_assert (query == NULL); //yeah, i'll fix this after talking to pvanhoof
++
++	TnyFolder *outbox = tny_send_queue_get_outbox (self);
++	TnyFolder *sentbox = tny_send_queue_get_sentbox (self);
++	tny_list_append (list, G_OBJECT(outbox));
++	tny_list_append (list, G_OBJECT(sentbox));
++	g_object_unref (outbox);
++	g_object_unref (sentbox);
++
++	refresh_observers (TNY_CAMEL_SEND_QUEUE (self));
++}
++
++
++typedef struct
++{
++	TnyCamelQueueable parent;
++
++	GError *err;
++	TnyFolderStore *self;
++	TnyList *list;
++	gboolean refresh;
++	TnyGetFoldersCallback callback;
++	TnyFolderStoreQuery *query;
++	gpointer user_data;
++	gboolean cancelled;
++	TnySessionCamel *session;
++
++} GetFoldersInfo;
++
++
++static void
++tny_camel_send_queue_get_folders_async_destroyer (gpointer thr_user_data)
++{
++	GetFoldersInfo *info = thr_user_data;
++	TnyCamelSendQueuePriv *priv = TNY_CAMEL_SEND_QUEUE_GET_PRIVATE (info->self);
++
++	/* thread reference */
++	g_object_unref (info->self);
++	g_object_unref (info->list);
++
++	if (info->query)
++		g_object_unref (G_OBJECT (info->query));
++
++	if (info->err)
++		g_error_free (info->err);
++
++	_tny_session_stop_operation (info->session);
++
++	camel_object_unref (info->session);
++
++	return;
++}
++
++static gboolean
++tny_camel_send_queue_get_folders_async_callback (gpointer thr_user_data)
++{
++	GetFoldersInfo *info = thr_user_data;
++	if (info->callback) {
++		tny_lockable_lock (info->session->priv->ui_lock);
++		info->callback (info->self, info->cancelled, info->list, info->err, info->user_data);
++		tny_lockable_unlock (info->session->priv->ui_lock);
++	}
++	return FALSE;
++}
++
++
++static gpointer
++tny_camel_send_queue_get_folders_async_thread (gpointer thr_user_data)
++{
++	GetFoldersInfo *info = (GetFoldersInfo*) thr_user_data;
++
++	tny_camel_send_queue_get_folders (TNY_FOLDER_STORE (info->self),
++		info->list, info->query, info->refresh, &info->err);
++
++	info->cancelled = FALSE;
++	if (info->err != NULL) {
++		if (camel_strstrcase (info->err->message, "cancel") != 0)
++			info->cancelled = TRUE;
++	}
++
++	return NULL;
++}
++
++static void
++tny_camel_send_queue_get_folders_async_cancelled_destroyer (gpointer thr_user_data)
++{
++	GetFoldersInfo *info = thr_user_data;
++	TnyCamelSendQueuePriv *priv = TNY_CAMEL_SEND_QUEUE_GET_PRIVATE (info->self);
++
++	/* thread reference */
++	g_object_unref (info->self);
++	g_object_unref (info->list);
++
++	if (info->err)
++		g_error_free (info->err);
++	if (info->query)
++		g_object_unref (info->query);
++
++	/**/
++
++	camel_object_unref (info->session);
++
++	return;
++}
++
++static gboolean
++tny_camel_send_queue_get_folders_async_cancelled_callback (gpointer thr_user_data)
++{
++	GetFoldersInfo *info = thr_user_data;
++	if (info->callback) {
++		tny_lockable_lock (info->session->priv->ui_lock);
++		info->callback (info->self, TRUE, info->list, info->err, info->user_data);
++		tny_lockable_unlock (info->session->priv->ui_lock);
++	}
++	return FALSE;
++}
++
++static void
++tny_camel_send_queue_get_folders_async (TnyFolderStore *self, TnyList *list, TnyFolderStoreQuery *query, gboolean refresh, TnyGetFoldersCallback callback, TnyStatusCallback status_callback, gpointer user_data)
++{
++	TNY_CAMEL_FOLDER_GET_CLASS (self)->get_folders_async(self, list, query, refresh, callback, status_callback, user_data);
++}
++
++
++static void
++tny_camel_send_queue_get_folders_async_default (TnyFolderStore *self, TnyList *list, TnyFolderStoreQuery *query, gboolean refresh, TnyGetFoldersCallback callback, TnyStatusCallback status_callback, gpointer user_data)
++{
++	GetFoldersInfo *info;
++	TnyCamelSendQueuePriv *priv = TNY_CAMEL_SEND_QUEUE_GET_PRIVATE (self);
++	TnyCamelAccountPriv *apriv = TNY_CAMEL_ACCOUNT_GET_PRIVATE (TNY_CAMEL_ACCOUNT (priv->trans_account));
++	CamelStore *store = (CamelStore*) apriv->service;
++	TnyCamelQueue *queue = apriv->queue;
++
++	/* Idle info for the callbacks */
++	info = g_slice_new (GetFoldersInfo);
++	info->session = apriv->session;
++	camel_object_ref (info->session);
++	info->self = self;
++	info->list = list;
++	info->refresh = refresh;
++	info->callback = callback;
++	info->user_data = user_data;
++	info->query = query;
++	info->err = NULL;
++
++	/* thread reference */
++	g_object_ref (info->self);
++	g_object_ref (info->list);
++	if (info->query)
++		g_object_ref (G_OBJECT (info->query));
++
++	_tny_camel_queue_launch (queue,
++		tny_camel_send_queue_get_folders_async_thread,
++		tny_camel_send_queue_get_folders_async_callback,
++		tny_camel_send_queue_get_folders_async_destroyer,
++		tny_camel_send_queue_get_folders_async_cancelled_callback,
++		tny_camel_send_queue_get_folders_async_cancelled_destroyer,
++		&info->cancelled,
++		info, sizeof (GetFoldersInfo),
++		__FUNCTION__);
++
++	return;
++}
++
++
++
++typedef struct _RefreshAsyncInfo
++{
++	TnyFolderStore *self;
++	TnyFolderStoreCallback callback;
++	TnyStatusCallback status_callback;
++	gpointer user_data;
++} RefreshAsyncInfo;
++
++static gboolean
++refresh_async_idle (gpointer user_data)
++{
++	RefreshAsyncInfo *info = user_data;
++
++	refresh_observers (TNY_CAMEL_SEND_QUEUE(info->self));
++
++	info->callback (info->self, FALSE, NULL, info->user_data);
++	g_object_unref (info->self);
++
++	g_slice_free (RefreshAsyncInfo, info);
++	return FALSE;
++}
++
++static void
++tny_camel_send_queue_refresh_async (TnyFolderStore *self, TnyFolderStoreCallback callback, TnyStatusCallback status_callback, gpointer user_data)
++{
++	RefreshAsyncInfo *info = g_slice_new0 (RefreshAsyncInfo);
++
++	info->self = g_object_ref (self);
++	info->callback = callback;
++	info->status_callback = status_callback;
++	info->user_data = user_data;
++
++	g_idle_add (refresh_async_idle, info);
++}
++
++
+ static void
+ tny_camel_send_queue_add (TnySendQueue *self, TnyMsg *msg, GError **err)
+ {
+@@ -1238,6 +1563,8 @@ tny_camel_send_queue_finalize (GObject *object)
+ 	TnyCamelAccountPriv *apriv = NULL;
+ 	TnyFolder *sentbox = NULL;
+ 
++	_observer_mixin_destroy (self, &(priv->store_observers));
++
+ 	sentbox = tny_send_queue_get_sentbox (self);
+ 
+ 	if (sentbox) {
+@@ -1404,6 +1731,22 @@ tny_send_queue_init (gpointer g, gpointer iface_data)
+ 	return;
+ }
+ 
++static void
++tny_folder_store_init (gpointer g, gpointer iface_data)
++{
++	TnyFolderStoreIface *klass = (TnyFolderStoreIface *)g;
++
++	klass->remove_folder= tny_camel_send_queue_remove_folder;
++	klass->create_folder= tny_camel_send_queue_create_folder;
++	klass->create_folder_async= tny_camel_send_queue_create_folder_async;
++	klass->get_folders= tny_camel_send_queue_get_folders;
++	klass->get_folders_async= tny_camel_send_queue_get_folders_async;
++	klass->add_observer= tny_camel_send_queue_add_observer;
++	klass->remove_observer= tny_camel_send_queue_remove_observer;
++	klass->refresh_async = tny_camel_send_queue_refresh_async;
++}
++
++
+ static void 
+ tny_camel_send_queue_class_init (TnyCamelSendQueueClass *class)
+ {
+@@ -1446,6 +1789,7 @@ tny_camel_send_queue_instance_init (GTypeInstance *instance, gpointer g_class)
+ 	priv->thread = NULL;
+ 	priv->pending_send_notifies = 0;
+ 
++	_observer_mixin_init (&(priv->store_observers));
+ 	return;
+ }
+ 
+@@ -1486,7 +1830,14 @@ tny_camel_send_queue_register_type (gpointer notused)
+ 			NULL,         /* interface_finalize */
+ 			NULL          /* interface_data */
+ 		};
+-	
++
++	static const GInterfaceInfo tny_folder_store_info =
++		{
++			(GInterfaceInitFunc) tny_folder_store_init, /* interface_init */
++			NULL,         /* interface_finalize */
++			NULL          /* interface_data */
++		};
++
+ 	type = g_type_register_static (G_TYPE_OBJECT,
+ 				       "TnyCamelSendQueue",
+ 				       &info, 0);
+@@ -1494,9 +1845,13 @@ tny_camel_send_queue_register_type (gpointer notused)
+ 	g_type_add_interface_static (type, TNY_TYPE_FOLDER_OBSERVER,
+ 				     &tny_folder_observer_info);
+ 	
++	g_type_add_interface_static (type, TNY_TYPE_FOLDER_STORE,
++				     &tny_folder_store_info);
++
+ 	g_type_add_interface_static (type, TNY_TYPE_SEND_QUEUE,
+ 				     &tny_send_queue_info);
+ 
++
+ 	return GUINT_TO_POINTER (type);
+ }
+ 
+diff --git a/libtinymail/tny-send-queue.c b/libtinymail/tny-send-queue.c
+index 7d7bb48..89572c4 100644
+--- a/libtinymail/tny-send-queue.c
++++ b/libtinymail/tny-send-queue.c
+@@ -29,6 +29,7 @@
+ 
+ #include <tny-send-queue.h>
+ #include <tny-folder.h>
++#include <tny-folder-store.h>
+ #include <tny-msg.h>
+ #include <tny-signals-marshal.h>
+ 
+@@ -299,6 +300,7 @@ tny_send_queue_register_type (gpointer notused)
+ 	type = g_type_register_static (G_TYPE_INTERFACE, 
+ 				       "TnySendQueue", &info, 0);
+ 	g_type_interface_add_prerequisite (type, G_TYPE_OBJECT);
++	g_type_interface_add_prerequisite (type, TNY_TYPE_FOLDER_STORE);
+ 
+ 	return GUINT_TO_POINTER (type);
+ }
+-- 
+1.5.6.3
+

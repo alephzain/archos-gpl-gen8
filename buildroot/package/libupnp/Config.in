@@ -1,0 +1,6 @@
+config BR2_PACKAGE_LIBUPNP
+	bool "libupnp"
+	default n
+	help
+	  The Portable UPnP SDK/Library
+

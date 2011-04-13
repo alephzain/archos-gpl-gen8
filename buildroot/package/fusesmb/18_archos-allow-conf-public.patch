@@ -1,0 +1,13 @@
+--- a/fusesmb.c        2010-08-25 17:48:18.000000000 +0200
++++ b/fusesmb.c     2010-08-25 17:48:42.000000000 +0200
+@@ -1149,7 +1149,8 @@
+         /* Check if configfile is only accessible by the owner */
+         if ((st.st_mode & 00777) != 00700 &&
+              (st.st_mode & 00777) != 00600 &&
+-              (st.st_mode & 00777) != 00400)
++              (st.st_mode & 00777) != 00400 &&
++             (st.st_mode & 00777) != 00666)
+         {
+             fprintf(stderr, "The config file should only be readable by the owner.\n"
+                             "You can correct the permissions by executing:\n"
+

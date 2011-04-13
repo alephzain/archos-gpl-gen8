@@ -1,0 +1,55 @@
+diff -X /home/marc/dontdiff -uNr samba-3.0.34.orig/source/libsmb/namequery.c samba-3.0.34/source/libsmb/namequery.c
+--- samba-3.0.34.orig/source/libsmb/namequery.c	2009-01-19 11:40:09.000000000 +0100
++++ samba-3.0.34/source/libsmb/namequery.c	2009-03-23 16:31:17.000000000 +0100
+@@ -535,8 +535,8 @@
+ 			   BOOL *timed_out)
+ {
+ 	BOOL found=False;
+-	int i, retries = 3;
+-	int retry_time = bcast?250:2000;
++	int i, retries = 5;
++	int retry_time = bcast?1000:2000;
+ 	struct timeval tval;
+ 	struct packet_struct p;
+ 	struct packet_struct *p2;
+@@ -1280,39 +1280,7 @@
+ 	/* iterate through the name resolution backends */
+   
+ 	while (next_token(&ptr, tok, LIST_SEP, sizeof(tok))) {
+-		if((strequal(tok, "host") || strequal(tok, "hosts"))) {
+-			if (resolve_hosts(name, name_type, return_iplist, return_count)) {
+-				result = True;
+-				goto done;
+-			}
+-		} else if(strequal( tok, "kdc")) {
+-			/* deal with KDC_NAME_TYPE names here.  This will result in a
+-				SRV record lookup */
+-			if (resolve_ads(name, KDC_NAME_TYPE, sitename, return_iplist, return_count)) {
+-				result = True;
+-				/* Ensure we don't namecache this with the KDC port. */
+-				name_type = KDC_NAME_TYPE;
+-				goto done;
+-			}
+-		} else if(strequal( tok, "ads")) {
+-			/* deal with 0x1c names here.  This will result in a
+-				SRV record lookup */
+-			if (resolve_ads(name, name_type, sitename, return_iplist, return_count)) {
+-				result = True;
+-				goto done;
+-			}
+-		} else if(strequal( tok, "lmhosts")) {
+-			if (resolve_lmhosts(name, name_type, return_iplist, return_count)) {
+-				result = True;
+-				goto done;
+-			}
+-		} else if(strequal( tok, "wins")) {
+-			/* don't resolve 1D via WINS */
+-			if (name_type != 0x1D && resolve_wins(name, name_type, return_iplist, return_count)) {
+-				result = True;
+-				goto done;
+-			}
+-		} else if(strequal( tok, "bcast")) {
++		if(strequal( tok, "bcast")) {
+ 			if (name_resolve_bcast(name, name_type, return_iplist, return_count)) {
+ 				result = True;
+ 				goto done;

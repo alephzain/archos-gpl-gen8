@@ -1,0 +1,20 @@
+--- samba-3.0.34.orig/source/client/mount.cifs.c	2009-01-19 11:40:09.000000000 +0100
++++ samba-3.0.34/source/client/mount.cifs.c	2009-03-26 10:33:53.000000000 +0100
+@@ -83,6 +83,8 @@
+ char * domain_name = NULL;
+ char * prefixpath = NULL;
+ 
++#ifndef SAMBA_ARM
++
+ /* glibc doesn't have strlcpy, strlcat. Ensure we do. JRA. We
+  * don't link to libreplace so need them here. */
+ 
+@@ -121,6 +123,8 @@
+ 	return ret;
+ }
+ 
++#endif
++
+ /* BB finish BB
+ 
+         cifs_umount

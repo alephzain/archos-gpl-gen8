@@ -1,0 +1,105 @@
+--- mtd-utils-1.2.0/ubi-utils/Makefile_        2009-06-18 13:34:33.000000000 +0200
++++ mtd-utils-1.2.0/ubi-utils/Makefile	       2009-10-19 14:45:44.000000000 +0200
+@@ -19,7 +19,7 @@
+ NTARGETS = ubiattach ubicrc32 ubidetach ubimkvol ubinfo ubinize \
+ 	ubirmvol ubiupdatevol ubiformat
+ TARGETS = pfiflash pddcustomize ubimirror bin2nand nand2bin ubigen \
+-	mkbootenv unubi pfi2bin $(NTARGETS)
++	mkbootenv unubi pfi2bin
+ 
+ vpath   %.c ./src
+ 
+@@ -29,19 +29,20 @@
+ %.o: %.c
+ 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $< -g -Wp,-MD,.$(shell basename $<).dep
+ 
+-all: $(TARGETS)
+-	make -C new-utils
++NUTILS:
++	$(MAKE) -C new-utils
++	
++all: $(TARGETS) NUTILS $(NTARGETS)
+ 
+ IGNORE=${wildcard .*.c.dep}
+ -include ${IGNORE}
+ 
+ $(NTARGETS):
+-	make -C new-utils $@
+-	mv new-utils/$@ $@
++	cp new-utils/$@ $@
+ 
+ clean:
+ 	rm -rf *.o $(TARGETS) .*.c.dep
+-	make -C new-utils clean
++	$(MAKE) -C new-utils clean
+ 
+ pddcustomize: pddcustomize.o error.o libubimirror.o bootenv.o hashmap.o \
+ 		libubi.o crc32.o
+--- mtd-utils-1.2.0/Makefile_	2009-06-18 13:43:15.000000000 +0200
++++ mtd-utils-1.2.0/Makefile	2009-06-18 13:43:37.000000000 +0200
+@@ -45,7 +45,7 @@
+ .SUFFIXES:
+ 
+ all: $(TARGETS)
+-	make -C $(BUILDDIR)/ubi-utils
++	$(MAKE) -C $(BUILDDIR)/ubi-utils
+ 
+ IGNORE=${wildcard $(BUILDDIR)/.*.c.dep}
+ -include ${IGNORE}
+@@ -53,7 +53,7 @@
+ clean:
+ 	rm -f $(BUILDDIR)/*.o $(TARGETS) $(BUILDDIR)/.*.c.dep $(SYMLINKS)
+ 	if [ "$(BUILDDIR)x" != ".x" ]; then rm -rf $(BUILDDIR); fi
+-	make -C $(BUILDDIR)/ubi-utils clean
++	$(MAKE) -C $(BUILDDIR)/ubi-utils clean
+ 
+ $(SYMLINKS):
+ 	ln -sf ../fs/jffs2/$@ $@
+@@ -95,4 +95,4 @@
+ 	install -m0755 ${TARGETS} ${DESTDIR}/${SBINDIR}/
+ 	mkdir -p ${DESTDIR}/${MANDIR}/man1
+ 	gzip -9c mkfs.jffs2.1 > ${DESTDIR}/${MANDIR}/man1/mkfs.jffs2.1.gz
+-	make -C $(BUILDDIR)/ubi-utils install
++	$(MAKE) -C $(BUILDDIR)/ubi-utils install
+--- mtd-utils-1.2.0/tests/ubi-tests/Makefile_	2009-06-18 13:43:09.000000000 +0200
++++ mtd-utils-1.2.0/tests/ubi-tests/Makefile	2009-06-18 13:44:15.000000000 +0200
+@@ -42,7 +42,7 @@
+ 	$(CC) $(CFLAGS) $^ -lubi -lpthread -o $@
+ 
+ ubi-utils:
+-	make -C $(UBIUTILS_PATH)
++	$(MAKE) -C $(UBIUTILS_PATH)
+ 
+ clean:
+ 	rm -f $(TESTS) $(addsuffix .o, $(TESTS)) libubi.* $(HELPERS) $(addsuffix .o, $(HELPERS))
+--- mtd-utils-1.2.0/ubi-utils/new-utils/Makefile_	2009-06-18 14:08:28.000000000 +0200
++++ mtd-utils-1.2.0/ubi-utils/new-utils/Makefile	2009-06-18 14:21:37.000000000 +0200
+@@ -43,23 +43,23 @@
+ 
+ libubi.a: libubi.o
+ 	$(AR) crv $@ $^
+-	ranlib $@
++	$(RANLIB) $@
+ 
+ libmtd.a: libmtd.o
+ 	$(AR) crv $@ $^
+-	ranlib $@
++	$(RANLIB) $@
+ 
+ libubigen.a: libubigen.o
+ 	$(AR) crv $@ $^
+-	ranlib $@
++	$(RANLIB) $@
+ 
+ libiniparser.a: libiniparser.o dictionary.o
+ 	$(AR) crv $@ $^
+-	ranlib $@
++	$(RANLIB) $@
+ 
+ libscan.a: libscan.o crc32.o
+ 	$(AR) crv $@ $^
+-	ranlib $@
++	$(RANLIB) $@
+ 
+ clean:
+ 	rm -rf *.o $(addsuffix .a, $(LIBS)) $(UTILS) .*.c.dep

@@ -1,0 +1,58 @@
+Index: libtinymail-camel/tny-camel-folder.c
+===================================================================
+--- a/libtinymail-camel/tny-camel-folder.c	(révision 36)
++++ b/libtinymail-camel/tny-camel-folder.c	(copie de travail)
+@@ -2571,7 +2571,7 @@
+ 
+ 	/* To disable parallel getting of messages while summary is being retreived,
+ 	 * restore this lock (A) */
+-	/* g_static_rec_mutex_lock (priv->folder_lock); */
++	g_static_rec_mutex_lock (priv->folder_lock);
+ 
+ 	camel_operation_register (cancel);
+ 	camel_operation_start (cancel, (char *) "Getting message");
+@@ -2598,7 +2598,7 @@
+ 
+ 	/* To disable parallel getting of messages while summary is being retreived,
+ 	 * restore this lock (B) */
+-	/* g_static_rec_mutex_unlock (priv->folder_lock);  */
++	g_static_rec_mutex_unlock (priv->folder_lock);
+ 
+ 	if (info->err != NULL) {
+ 		if (camel_strstrcase (info->err->message, "cancel") != NULL)
+Index: libtinymail-camel/camel-lite/camel/providers/imap/camel-imap-command.c
+===================================================================
+--- a/libtinymail-camel/camel-lite/camel/providers/imap/camel-imap-command.c	(révision 36)
++++ b/libtinymail-camel/camel-lite/camel/providers/imap/camel-imap-command.c	(copie de travail)
+@@ -1009,7 +1009,6 @@
+  * camel_imap_response_free:
+  * @store: the CamelImapStore the response is from
+  * @response: a CamelImapResponse
+- * @fetching_message: whether we're fetching a message
+  *
+  * Frees all of the data in @response and processes any untagged
+  * EXPUNGE and EXISTS responses in it. Releases @store's connect_lock.
+@@ -1020,14 +1019,10 @@
+ 	int i, number, exists = 0;
+ 	GArray *expunged = NULL;
+ 	char *resp, *p;
+-	gboolean fetching_message = FALSE;
+ 
+-
+ 	if (!response)
+ 		return;
+ 
+-	fetching_message = (response->folder && (response->folder->parent_store != (CamelStore *) store));
+-
+ 	for (i = 0; i < response->untagged->len; i++) {
+ 		resp = response->untagged->pdata[i];
+ 
+@@ -1055,7 +1050,7 @@
+ 	g_ptr_array_free (response->untagged, TRUE);
+ 	g_free (response->status);
+ 
+-	if (response->folder && !fetching_message) {
++	if (response->folder) {
+ 		if (exists > 0 || expunged) {
+ 			/* Update the summary */
+ 			camel_imap_folder_changed (response->folder,

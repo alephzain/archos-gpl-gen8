@@ -1,0 +1,19 @@
+config BR2_PACKAGE_DJMOUNT
+	bool "djmount"
+	default n
+	select BR2_PACKAGE_FUSE
+	select BR2_PACKAGE_LIBUPNP
+	help
+	  djmount - mount MediaServers content as a Linux filesystem.
+	  Created 23/04/2005, Rémi Turboult <r3mi@users.sourceforge.net>
+	  
+	  djmount is a UPnP AV client. It mounts as a Linux filesystem (using FUSE)
+	  the media content of compatible UPnP AV devices.
+	  
+	  djmount discovers automatically all UPnP AV Media Servers on the network,
+	  and make the content available in a directory tree. All shared files 
+	  (e.g. Audio or Video files) are directly visible and can be played using 
+	  your favorite media player.
+	  
+	  djmount is free software, licensed under the terms of the GNU General Public
+	  License (GNU GPL).

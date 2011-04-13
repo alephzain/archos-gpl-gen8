@@ -1,0 +1,35 @@
+diff -X /home/marc/dontdiff -uNr samba-3.0.34.orig/source/configure.in samba-3.0.34/source/configure.in
+--- samba-3.0.34.orig/source/configure.in	2009-01-19 11:40:09.000000000 +0100
++++ samba-3.0.34/source/configure.in	2009-03-23 16:28:19.000000000 +0100
+@@ -2545,7 +2545,7 @@
+ fi
+ 
+ AC_CACHE_CHECK([for inotify support],samba_cv_HAVE_INOTIFY,[
+-AC_CHECK_HEADERS(linux/inotify.h asm/unistd.h)
++AC_CHECK_HEADERS(linux/inotify.h asm/unistd.h sys/inotify.h)
+ AC_CHECK_FUNCS(inotify_init)
+ AC_HAVE_DECL(__NR_inotify_init, [#include <asm/unistd.h>])
+ ],
+diff -X /home/marc/dontdiff -uNr samba-3.0.34.orig/source/smbd/notify_inotify.c samba-3.0.34/source/smbd/notify_inotify.c
+--- samba-3.0.34.orig/source/smbd/notify_inotify.c	2009-01-19 11:40:09.000000000 +0100
++++ samba-3.0.34/source/smbd/notify_inotify.c	2009-03-23 16:28:19.000000000 +0100
+@@ -26,6 +26,10 @@
+ 
+ #ifdef HAVE_INOTIFY
+ 
++#if HAVE_SYS_INOTIFY_H
++#include <sys/inotify.h>
++#else
++
+ #ifdef HAVE_ASM_TYPES_H
+ #include <asm/types.h>
+ #endif
+@@ -58,7 +62,7 @@
+ #include <sys/inotify.h>
+ 
+ #endif
+-
++#endif
+ 
+ /* older glibc headers don't have these defines either */
+ #ifndef IN_ONLYDIR

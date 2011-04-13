@@ -1,0 +1,12 @@
+diff -urN qt-2.3.10/src/kernel/qwindowsystem_qws.cpp qt-2.3.10_mod/src/kernel/qwindowsystem_qws.cpp
+--- qt-2.3.10/src/kernel/qwindowsystem_qws.cpp	2006-06-26 16:08:52.000000000 +0200
++++ qt-2.3.10_mod/src/kernel/qwindowsystem_qws.cpp	2006-06-26 15:35:07.000000000 +0200
+@@ -1864,7 +1864,7 @@
+ void QWSServer::endDisplayReconfigure()
+ {
+     delete qwsServer->gfx;
+-    qt_screen->connect( QString::null );
++    qt_screen->connect( QString(qws_display_spec) );
+     qwsServer->swidth = qt_screen->deviceWidth();
+     qwsServer->sheight = qt_screen->deviceHeight();
+     qwsServer->screenRegion = QRegion( 0, 0, qwsServer->swidth, qwsServer->sheight );

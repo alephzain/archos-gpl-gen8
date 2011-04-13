@@ -1,0 +1,8 @@
+config BR2_PACKAGE_BLUEZ
+	bool "bluetooth protocol stack"
+	default n
+	select BR2_PACKAGE_DBUS
+	help
+	  Official Linux Bluetooth protocol stack
+
+	  http://www.bluez.org

@@ -1,0 +1,114 @@
+diff -Naur a/display_nbtstat.c b/display_nbtstat.c
+--- a/display_nbtstat.c	2004-03-06 18:27:59.000000000 +0100
++++ b/display_nbtstat.c	2010-11-24 16:01:53.000000000 +0100
+@@ -20,7 +20,7 @@
+ #include <string.h>
+ #include "nbtdefs.h"
+ 
+-void display_nbtstat(FILE *ofp, const struct NMB_query_response *rsp, int full)
++void display_nbtstat(FILE *ofp, const struct NMB_query_response *rsp, int full,int archos)
+ {
+ char	reportbuf[256],
+ 	*p = reportbuf;
+@@ -36,10 +36,23 @@
+ 	 */
+ 	if (rsp->domain[0] == '\0'  &&  rsp->computer[0] == '\0' )
+ 		sprintf(computername, "-no name-");
+-	else
++	else{
+ 		sprintf(computername, "%s\\%s",
+-			rsp->domain,
+-			rsp->computer );
++					rsp->domain,
++					rsp->computer );
++		if (archos){
++		char serverfilename[64];// /tmp/nbtscan/$(rsp->domain).cache
++
++		FILE* groupfile = fopen("/tmp/nbtscan/nbt_group.cache","a");
++		sprintf(serverfilename,"/tmp/nbtscan/%s.cache",rsp->domain);
++		FILE* serverfile = fopen(serverfilename,"a");
++		fprintf(groupfile,"%s\n",rsp->domain);
++		fprintf(serverfile,"%s %s\n",rsp->computer,inet_ntoa(rsp->remote.sin_addr));
++		fclose(groupfile);
++		fclose(serverfile);
++	}}
++	if (!archos){
++
+ 
+ 	p += sprintf(p, "%-15s %-31s",
+ 		inet_ntoa(rsp->remote.sin_addr),	/* IP address		*/
+@@ -118,5 +131,5 @@
+ 		fprintf(ofp, "%s\n\n", dispbuf);
+ 	}
+ 
+-	fflush(ofp);
++	fflush(ofp);}
+ }
+diff -Naur a/nbtdefs.h b/nbtdefs.h
+--- a/nbtdefs.h	2004-03-06 18:27:59.000000000 +0100
++++ b/nbtdefs.h	2010-11-24 15:50:22.000000000 +0100
+@@ -139,7 +139,7 @@
+ extern void process_response(struct NMB_query_response *rsp);
+ #ifdef EOF
+ extern void display_nbtstat(FILE *ofp, const struct NMB_query_response *rsp,
+-				int full);
++				int full,int archos);
+ #endif
+ 
+ /*------------------------------------------------------------------------
+diff -Naur a/nbtscan.c b/nbtscan.c
+--- a/nbtscan.c	2005-08-30 16:47:57.000000000 +0200
++++ b/nbtscan.c	2010-11-24 15:50:22.000000000 +0100
+@@ -66,6 +66,7 @@
+ #  include "getopt.i"
+ #endif
+ #include "nbtdefs.h"
++#include <sys/stat.h>
+ 
+ #undef SUPPORT_CIFS
+ #undef SUPPORT_BROADCAST
+@@ -84,6 +85,7 @@
+ int		gen_Perl = FALSE;
+ 
+ static int	full_nbtstat = FALSE;
++static int	archos = FALSE;
+ int		show_mac_address = FALSE;
+ 
+ static int sendpacket(int sfd, const void *pak, int len,
+@@ -118,7 +120,7 @@
+ 		exit(EXIT_SUCCESS);
+ 	}
+ 
+-	while ( (c = getopt(argc, argv, "CHT:nfp:bt:vw:mVO:1P")) != EOF )
++	while ( (c = getopt(argc, argv, "CHT:nfp:bt:vw:mVO:1Pa")) != EOF )
+ 	{
+ 		switch (c)
+ 		{
+@@ -187,6 +189,8 @@
+ 
+ 		  case 'n':	no_inverse_lookup = TRUE;
+ 				break;
++		  case 'a':	archos = TRUE;
++				break;
+ 		}
+ 	}
+ 
+@@ -249,6 +253,9 @@
+ 		}
+ 	}
+ #endif
++mkdir("/tmp/nbtscan", S_IRWXU | S_IRWXG | S_IRWXO);
++FILE* grouplisting = fopen("/tmp/nbtscan/nbt_group.cache","w");
++fclose(grouplisting);
+ 
+ 	/*----------------------------------------------------------------
+ 	 * Bind the local endpoint to receive our responses. If we use a
+@@ -402,7 +409,7 @@
+ 					    generate_perl(ofp, &rsp);
+ 					else
+ #endif
+-					    display_nbtstat(ofp,&rsp,full_nbtstat);
++					    display_nbtstat(ofp,&rsp,full_nbtstat,archos);
+ 				}
+ 			}
+ 			else

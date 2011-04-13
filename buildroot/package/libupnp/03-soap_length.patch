@@ -1,0 +1,14 @@
+diff -X /home/marc/dontdiff -ruN libupnp-1.6.6.orig/upnp/src/inc/upnpapi.h libupnp-1.6.6/upnp/src/inc/upnpapi.h
+--- libupnp-1.6.6.orig/upnp/src/inc/upnpapi.h	2008-03-20 23:27:02.000000000 +0100
++++ libupnp-1.6.6/upnp/src/inc/upnpapi.h	2009-12-11 09:37:43.000000000 +0100
+@@ -50,8 +50,8 @@
+ 
+ #define DEFAULT_MAXAGE 1800
+ 
+-#define DEFAULT_SOAP_CONTENT_LENGTH 16000
+-#define MAX_SOAP_CONTENT_LENGTH 32000
++#define DEFAULT_SOAP_CONTENT_LENGTH 2000000 
++#define MAX_SOAP_CONTENT_LENGTH 2000000 
+ 
+ extern size_t g_maxContentLength;
+ 

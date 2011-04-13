@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBZIP
+	bool "libzip"
+	default n
+	help
+	  libzip is a C library for reading, creating, and modifying zip archives.
+	  Files can be added from data buffers, files, or compressed data copied
+	  directly from other zip archives.
+
+	  http://www.nih.at/libzip/

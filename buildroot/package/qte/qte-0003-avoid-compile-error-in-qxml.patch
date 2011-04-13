@@ -1,0 +1,12 @@
+diff -urN qt-2.3.10-orig/src/tools/qvaluestack.h qt-2.3.10/src/tools/qvaluestack.h
+--- qt-2.3.10-orig/src/tools/qvaluestack.h	2008-04-29 13:36:16.000000000 +0200
++++ qt-2.3.10/src/tools/qvaluestack.h	2008-04-29 14:07:19.000000000 +0200
+@@ -54,7 +54,7 @@
+     {
+ 	T elem( this->last() );
+ 	if ( !this->isEmpty() )
+-	    remove( this->fromLast() );
++	    QValueList<T>::remove( this->fromLast() );
+ 	return elem;
+     }
+     T& top() { return this->last(); }

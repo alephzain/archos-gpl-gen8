@@ -1,0 +1,10 @@
+--- gdb-6.5/gdb/arm-tdep.c.orig	1 Aug 2006 18:27:51 -0000	1.214
++++ gdb-6.5/gdb/arm-tdep.c	2 Nov 2006 20:35:53 -0000
+@@ -2635,6 +2635,7 @@ arm_gdbarch_init (struct gdbarch_info in
+ 		  break;
+ 
+ 		case EF_ARM_EABI_VER4:
++		case EF_ARM_EABI_VER5:
+ 		  arm_abi = ARM_ABI_AAPCS;
+ 		  /* EABI binaries default to VFP float ordering.  */
+ 		  if (fp_model == ARM_FLOAT_AUTO)

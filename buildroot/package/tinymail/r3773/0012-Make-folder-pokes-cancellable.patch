@@ -1,0 +1,53 @@
+From c0fa7b3868b2665ec3cb3f3fde2ff817df76567f Mon Sep 17 00:00:00 2001
+From: Rob Taylor <rob.taylor@codethink.co.uk>
+Date: Fri, 22 Aug 2008 17:30:34 +0100
+Subject: [PATCH] Make folder pokes cancellable.
+
+---
+ libtinymail-camel/tny-camel-folder.c |   10 ++++++++--
+ 1 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/libtinymail-camel/tny-camel-folder.c b/libtinymail-camel/tny-camel-folder.c
+index ebf886a..e93f3a3 100644
+--- a/libtinymail-camel/tny-camel-folder.c
++++ b/libtinymail-camel/tny-camel-folder.c
+@@ -5932,6 +5932,7 @@ typedef struct {
+ 	gint unread;
+ 	gint total;
+ 	gboolean do_status;
++	gboolean cancelled;
+ 	TnySessionCamel *session;
+ } PokeStatusInfo;
+ 
+@@ -5943,6 +5944,9 @@ tny_camel_folder_poke_status_callback (gpointer data)
+ 	TnyFolderChange *change = NULL;
+ 	TnyCamelFolderPriv *priv = TNY_CAMEL_FOLDER_GET_PRIVATE (self);
+ 
++	if (info->cancelled)
++		return FALSE;
++
+ 	if (info->total != -1) {
+ 		priv->cached_length = (guint) info->total;
+ 		if (!change)
+@@ -6050,14 +6054,16 @@ tny_camel_folder_poke_status_default (TnyFolder *self)
+ 		}
+ 	}
+ 
+-	_tny_camel_queue_launch (TNY_FOLDER_PRIV_GET_QUEUE (priv), 
++	_tny_camel_queue_launch_wflags (TNY_FOLDER_PRIV_GET_QUEUE (priv), 
+ 		tny_camel_folder_poke_status_thread, 
+ 		tny_camel_folder_poke_status_callback, 
+ 		tny_camel_folder_poke_status_destroyer, 
+ 		tny_camel_folder_poke_status_callback, 
+ 		tny_camel_folder_poke_status_destroyer, 
+-		NULL, 
++		&info->cancelled,
+ 		info, sizeof (PokeStatusInfo),
++		TNY_CAMEL_QUEUE_AUTO_CANCELLABLE_ITEM|
++		TNY_CAMEL_QUEUE_CANCELLABLE_ITEM,
+ 		__FUNCTION__);
+ 
+ 	return;
+-- 
+1.5.6.3
+

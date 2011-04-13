@@ -1,0 +1,12 @@
+diff -Naur a/djmount/content_dir.c b/djmount/content_dir.c
+--- a/djmount/content_dir.c	2010-06-18 10:33:25.000000000 +0200
++++ b/djmount/content_dir.c	2010-06-18 10:33:49.000000000 +0200
+@@ -147,7 +147,7 @@
+ 		 (browse ? "Browse" : "Search"),
+ 		 (browse ? "ObjectID" : "ContainerID"),		objectId,
+ 		 (browse ? "BrowseFlag" : "SearchCriteria"),	criteria,
+-		 "Filter", 	      "*",
++		 "Filter", 	      "dc:title,upnp:class,res,res@protocolInfo,res@resolution,res@size,res@importURI,container@childCount",
+ 		 "StartingIndex",     int_to_string (tmp_ctx, starting_index),
+ 		 "RequestedCount",    int_to_string (tmp_ctx, requested_count),
+ 		 "SortCriteria",      "",

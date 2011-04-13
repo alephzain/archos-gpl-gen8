@@ -1,0 +1,98 @@
+--- libtinymail-orig/libtinymail/Makefile.in	2008-09-30 16:25:00.000000000 +0200
++++ libtinymail/libtinymail/Makefile.in	2008-10-06 18:04:51.000000000 +0200
+@@ -81,7 +81,8 @@
+ 	tny-fs-stream-cache.lo tny-cached-file.lo \
+ 	tny-cached-file-stream.lo tny-merge-folder.lo \
+ 	tny-combined-account.lo tny-idle-stopper.lo \
+-	tny-progress-info.lo tny-connection-policy.lo $(am__objects_1)
++	tny-progress-info.lo tny-connection-policy.lo \
++	tny-merge-folder-store.lo observer-mixin.lo $(am__objects_1)
+ libtinymail_1_0_la_OBJECTS = $(am_libtinymail_1_0_la_OBJECTS)
+ DEFAULT_INCLUDES = -I. -I$(srcdir) -I$(top_builddir)
+ depcomp = $(SHELL) $(top_srcdir)/depcomp
+@@ -353,7 +354,7 @@
+ INCLUDES = $(LIBTINYMAIL_CFLAGS) -I. -I$(top_srcdir) $(EXTRA_CFLAGS)
+ lib_LTLIBRARIES = libtinymail-1.0.la
+ CLEANFILES = tny-signals-marshal.c tny-signals-marshal.h
+-private_headers = tny-common-priv.h
++private_headers = tny-common-priv.h observer-mixin.h
+ libtinymail_1_0_headers = \
+ 	tny-signals-marshal.h \
+ 	tny-shared.h tny.h \
+@@ -395,7 +396,8 @@
+ 	tny-cached-file.h \
+ 	tny-cached-file-stream.h \
+ 	tny-combined-account.h \
+-	tny-connection-policy.h 
++	tny-connection-policy.h \
++	tny-merge-folder-store.h
+ 
+ libtinymail_1_0_la_SOURCES = \
+ 	$(libtinymail_1_0_headers) \
+@@ -445,6 +447,8 @@
+ 	tny-idle-stopper.c \
+ 	tny-progress-info.c \
+ 	tny-connection-policy.c \
++	tny-merge-folder-store.c \
++	observer-mixin.c \
+ 	$(private_headers)
+ 
+ libtinymail_1_0_la_LIBADD = $(LIBTINYMAIL_LIBS)
+@@ -526,6 +530,7 @@
+ distclean-compile:
+ 	-rm -f *.tab.c
+ 
++@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/observer-mixin.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-account-store.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-account.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-cached-file-stream.Plo@am__quote@
+@@ -551,6 +556,7 @@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-iterator.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-list.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-lockable.Plo@am__quote@
++@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-merge-folder-store.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-merge-folder.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-mime-part.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-msg-receive-strategy.Plo@am__quote@
+diff -u -r libtinymail-orig/libtinymail-camel/Makefile.in libtinymail/libtinymail-camel/Makefile.in
+--- libtinymail-orig/libtinymail-camel/Makefile.in	2008-09-30 16:24:58.000000000 +0200
++++ libtinymail/libtinymail-camel/Makefile.in	2008-10-06 19:11:15.000000000 +0200
+@@ -87,7 +87,7 @@
+ 	tny-camel-bs-mime-part.lo tny-camel-bs-msg-receive-strategy.lo \
+ 	tny-camel-bs-msg-header.lo \
+ 	tny-camel-default-connection-policy.lo \
+-	tny-camel-recover-connection-policy.lo
++	tny-camel-recover-connection-policy.lo observer-mixin.lo
+ libtinymail_camel_1_0_la_OBJECTS =  \
+ 	$(am_libtinymail_camel_1_0_la_OBJECTS)
+ DEFAULT_INCLUDES = -I. -I$(srcdir) -I$(top_builddir)
+@@ -418,7 +418,8 @@
+ 	tny-camel-queue-priv.h \
+ 	tny-camel-bs-msg-priv.h \
+ 	tny-camel-bs-mime-part-priv.h \
+-	tny-camel-bs-msg-header-priv.h
++	tny-camel-bs-msg-header-priv.h \
++	observer-mixin.h
+ 
+ libtinymail_camel_1_0_la_SOURCES = \
+ 	$(libtinymail_camel_priv_headers) \
+@@ -454,7 +455,8 @@
+ 	tny-camel-bs-msg-receive-strategy.c \
+ 	tny-camel-bs-msg-header.c \
+ 	tny-camel-default-connection-policy.c \
+-	tny-camel-recover-connection-policy.c
++	tny-camel-recover-connection-policy.c \
++	observer-mixin.c
+ 
+ libtinymail_camel_1_0_la_LIBADD = \
+ 	$(LIBTINYMAIL_CAMEL_LIBS) \
+@@ -541,6 +543,7 @@
+ distclean-compile:
+ 	-rm -f *.tab.c
+ 
++@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/observer-mixin.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-camel-account.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-camel-bs-mime-part.Plo@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tny-camel-bs-msg-header.Plo@am__quote@
+Seulement dans libtinymail/libtinymail-camel: observer-mixin.c
+Seulement dans libtinymail/libtinymail-camel: observer-mixin.h

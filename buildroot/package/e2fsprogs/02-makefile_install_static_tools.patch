@@ -1,0 +1,53 @@
+diff -ruN e2fsprogs-1.40.9/e2fsck/Makefile.in e2fsprogs-1.40.9-new/e2fsck/Makefile.in
+--- e2fsprogs-1.40.9/e2fsck/Makefile.in	2008-04-23 20:56:25.000000000 +0200
++++ e2fsprogs-1.40.9-new/e2fsck/Makefile.in	2010-12-30 18:17:11.000000000 +0100
+@@ -12,7 +12,7 @@
+ 
+ @MCONFIG@
+ 
+-PROGS=		e2fsck
++PROGS=		e2fsck e2fsck.static
+ MANPAGES=	e2fsck.8
+ FMANPAGES=	e2fsck.conf.5
+ XTRA_CFLAGS=	-DRESOURCE_TRACK -I.
+@@ -120,6 +120,7 @@
+ 	@echo "	LD $@"
+ 	@$(LD) $(ALL_LDFLAGS) $(LDFLAG_STATIC) -o e2fsck.static $(OBJS) \
+ 		$(STATIC_LIBS) 
++	@$(STRIP) $@
+ 
+ e2fsck.profiled: $(PROFILED_OBJS)  $(PROFILED_DEPLIBS)
+ 	@echo "	LD $@"
+diff -ruN e2fsprogs-1.40.9/misc/Makefile.in e2fsprogs-1.40.9-new/misc/Makefile.in
+--- e2fsprogs-1.40.9/misc/Makefile.in	2008-04-23 20:56:25.000000000 +0200
++++ e2fsprogs-1.40.9-new/misc/Makefile.in	2010-12-30 18:16:54.000000000 +0100
+@@ -17,7 +17,7 @@
+ @UUIDD_CMT@UUIDD_PROG= uuidd
+ @UUIDD_CMT@UUIDD_MAN= uuidd.8
+ 
+-SPROGS=		mke2fs badblocks tune2fs dumpe2fs blkid logsave \
++SPROGS=		mke2fs mke2fs.static badblocks tune2fs tune2fs.static dumpe2fs blkid logsave \
+ 			$(E2IMAGE_PROG) @FSCK_PROG@
+ USPROGS=	mklost+found filefrag $(UUIDD_PROG)
+ SMANPAGES=	tune2fs.8 mklost+found.8 mke2fs.8 dumpe2fs.8 badblocks.8 \
+@@ -104,6 +104,12 @@
+ 	@$(CC) $(ALL_LDFLAGS) -o tune2fs $(TUNE2FS_OBJS) $(LIBS) \
+ 		$(LIBS_BLKID) $(LIBS_E2P) $(LIBINTL)
+ 
++tune2fs.static: $(TUNE2FS_OBJS) $(DEPLIBS) $(DEPLIBS_E2P) $(DEPLIBS_BLKID)
++	@echo "	LD $@"
++	@$(CC) $(ALL_LDFLAGS) -static -o $@ $(TUNE2FS_OBJS) $(LIBS) \
++		$(LIBS_BLKID) $(LIBS_E2P) $(LIBINTL)
++	@$(STRIP) $@
++
+ blkid: $(BLKID_OBJS) $(DEPLIBS_BLKID)
+ 	@echo "	LD $@"
+ 	@$(CC) $(ALL_LDFLAGS) -o blkid $(BLKID_OBJS) $(LIBS_BLKID) $(LIBINTL)
+@@ -135,6 +141,7 @@
+ 	@$(CC) $(ALL_LDFLAGS) -static -o mke2fs.static $(MKE2FS_OBJS) \
+ 		$(STATIC_LIBS) $(STATIC_LIBE2P) $(STATIC_LIBBLKID) \
+ 		$(STATIC_LIBUUID) $(LIBINTL)
++	@$(STRIP) $@
+ 
+ chattr: $(CHATTR_OBJS) $(DEPLIBS_E2P)
+ 	@echo "	LD $@"

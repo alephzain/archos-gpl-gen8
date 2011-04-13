@@ -1,0 +1,60 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/cache.c fusesmb-0.8.7/cache.c
+--- fusesmb-0.8.7.orig/cache.c	2009-04-01 12:31:39.000000000 +0200
++++ fusesmb-0.8.7/cache.c	2009-04-01 12:31:39.000000000 +0200
+@@ -31,6 +31,7 @@
+ #include <errno.h>
+ #include <sys/types.h>
+ #include <unistd.h>
++#include <signal.h>
+ 
+ #include "stringlist.h"
+ #include "smbctx.h"
+@@ -84,6 +85,39 @@
+     }
+ }
+ 
++static int is_process_alive(const char* pidfile)
++{
++	FILE *fp = fopen(pidfile, "r");
++	if (fp == NULL)
++		return -1;
++
++	int pid;
++	if (fscanf(fp, "%i", &pid) != 1) {
++		printf("Failed to read pid file (%s:%i).\n",
++			__FILE__, __LINE__);
++		fclose(fp);
++		return -1;
++	}
++	fclose(fp);
++
++	// make sure it's a potentially good
++	if (pid <= 0) {
++		printf("Something is fishy with this pid %i (%s:%i)",
++			pid, __FILE__, __LINE__);
++		return -1;
++	}
++
++	int ret = kill(pid, 0);
++	if (ret == -1 && errno == ESRCH) {
++		return 0;
++	}
++	else if ( ret == -1) {
++		return -1;
++	}
++	else {
++		return 1;
++	}
++}
+ 
+ /*
+  * Some servers refuse to return a server list using libsmbclient, so using
+@@ -533,7 +567,7 @@
+ 
+         if (-1 != stat(pidfile, &st))
+         {
+-            if (time(NULL) - st.st_mtime > 30*60)
++            if (is_process_alive(pidfile) == 0)
+                 unlink(pidfile);
+             else
+             {

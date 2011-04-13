@@ -1,0 +1,5 @@
+config BR2_PACKAGE_LIBF2M
+        bool "libf2m"
+        default n
+        help
+        Transcode FLV-H263 to MPEG4

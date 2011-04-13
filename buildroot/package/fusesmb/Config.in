@@ -1,0 +1,8 @@
+config BR2_PACKAGE_FUSESMB
+	bool "fusesmb"
+	default n
+	select BR2_PACKAGE_FUSE
+	select BR2_PACKAGE_SAMBA
+	help
+
+	http://www.ricardis.tudelft.nl/~vincent/fusesmb/

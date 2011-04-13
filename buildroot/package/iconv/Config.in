@@ -1,0 +1,7 @@
+config BR2_PACKAGE_ICONV
+	bool "iconv"
+	default n
+	help
+	  A character encoding conversion library
+
+	  http://www.libtom.org/

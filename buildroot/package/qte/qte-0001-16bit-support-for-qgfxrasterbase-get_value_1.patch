@@ -1,0 +1,32 @@
+Index: qt-2.3.10/src/kernel/qgfxraster_qws.cpp
+===================================================================
+--- qt-2.3.10.orig/src/kernel/qgfxraster_qws.cpp	2008-05-30 10:34:19.765116685 +0200
++++ qt-2.3.10/src/kernel/qgfxraster_qws.cpp	2008-05-30 10:35:29.857111000 +0200
+@@ -1,5 +1,5 @@
+ /*****************************************************************************
+-** $Id: qt/src/kernel/qgfxraster_qws.cpp   2.3.10   edited 2005-01-24 $
++** $Id: qgfxraster_qws.cpp 4370 2006-04-11 13:42:15Z frank $
+ **
+ ** Implementation of QGfxRaster (unaccelerated graphics context) class for
+ ** Embedded Qt
+@@ -2100,6 +2100,20 @@
+ 		monobitval=monobitval & 0xff;
+ 	    }
+ 	}
++	} else if(sdepth==16) {
++	unsigned short hold=*((unsigned short *)(*srcdata));
++	unsigned int r,g,b;
++	r=((hold & 0xf800) >> 11) * 255 / 31;
++	g=((hold & 0x03e0) >> 5) * 255 / 63;
++	b=(hold & 0x001f) * 255 / 31;
++	(*srcdata)+=2;
++#ifdef QT_NEED_SIMPLE_ALLOC
++	simple_8bpp_alloc=TRUE;
++#endif
++	ret = GFX_8BPP_PIXEL(r,g,b);
++#ifdef QT_NEED_SIMPLE_ALLOC
++	simple_8bpp_alloc=FALSE;
++#endif
+     } else if(sdepth==32) {
+ 	unsigned int hold=*((unsigned int *)(*srcdata));
+ 	unsigned int r,g,b;

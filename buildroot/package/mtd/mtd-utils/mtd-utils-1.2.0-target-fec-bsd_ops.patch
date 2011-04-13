@@ -1,0 +1,14 @@
+diff -Nur mtd-utils-1.2.0-orig/fec.c mtd-utils-1.2.0/fec.c
+--- mtd-utils-1.2.0-orig/fec.c	2009-06-15 19:16:50.000000000 +0200
++++ mtd-utils-1.2.0/fec.c	2009-06-15 19:17:13.000000000 +0200
+@@ -49,10 +49,8 @@
+ /*
+  * compatibility stuff
+  */
+-#ifdef MSDOS	/* but also for others, e.g. sun... */
+ #define NEED_BCOPY
+ #define bcmp(a,b,n) memcmp(a,b,n)
+-#endif
+ 
+ #ifdef NEED_BCOPY
+ #define bcopy(s, d, siz)        memcpy((d), (s), (siz))

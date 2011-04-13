@@ -1,0 +1,11 @@
+--- /cache.c	2010-12-07 11:47:04.000000000 +0100
++++ b/cache.c	2010-12-07 12:02:42.000000000 +0100
+@@ -302,7 +302,7 @@
+     {
+ DBG syslog(LOG_DEBUG, "ctx->opendir failed (%s)\n", strerror(errno));
+         ctx->closedir(ctx, dir);
+-        fprintf(tmp_file, "/%s/%s\n", wg, sv);
++        fprintf(tmp_file, "/%s/%s/Not_allowed\t//%s/Not_allowed\n", wg, sv,ip);
+ DBG syslog(LOG_DEBUG, "%s: we arent allowd to browse the shares", __FUNCTION__);
+         return -1;
+     }

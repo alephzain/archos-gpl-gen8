@@ -1,0 +1,78 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/fusesmb.c fusesmb-0.8.7/fusesmb.c
+--- fusesmb-0.8.7.orig/fusesmb.c	2009-04-01 12:31:39.000000000 +0200
++++ fusesmb-0.8.7/fusesmb.c	2009-04-01 12:31:39.000000000 +0200
+@@ -39,6 +39,7 @@
+ #include <signal.h>
+ #include <libsmbclient.h>
+ #include <time.h>
++#include <syslog.h>
+ #include "debug.h"
+ #include "hash.h"
+ #include "smbctx.h"
+@@ -144,16 +145,24 @@
+     }
+ }
+ 
+-static void *check_config_file_thread(void *p)
++static int reload = 0;
++static void sig_handler( int sig_id )
+ {
+-    sigset_t interesting_sigs;
+-    int caught;
++    if ( sig_id == SIGUSR1 ) {
++        reload = 1;
++    }
++}
+ 
+-    sigemptyset(&interesting_sigs);
+-    sigaddset(&interesting_sigs, SIGUSR1);
++
++static void *check_config_file_thread(void *p)
++{
+     while (1) {
+-        sigwait(&interesting_sigs, &caught);
+-        check_config_file();
++        if ( reload ) {
++            reload = 0;
++            check_config_file();
++            syslog(LOG_DEBUG, "SIGUSR1, reloading");
++        }
++        usleep(500000);
+     }
+     return NULL;
+ }
+@@ -1012,6 +1021,15 @@
+         exit(EXIT_FAILURE);
+     if (0 != pthread_create(&config_thread, NULL, check_config_file_thread, NULL))
+         exit(EXIT_FAILURE);
++
++    struct sigaction act;
++    memset(&act, '\0', sizeof(struct sigaction));
++    act.sa_handler = sig_handler;
++    sigemptyset(&act.sa_mask);
++    if ( sigaction( SIGUSR1, &act, NULL ) < 0 ) {
++        fprintf(stderr, "failed to register the SIGUSR1 handler\n");
++        exit(EXIT_FAILURE);
++    }
+     return NULL;
+ }
+ 
+@@ -1159,7 +1177,7 @@
+ 
+     sigset_t blocked_sigs;
+     sigemptyset(&blocked_sigs);
+-    sigaddset(&blocked_sigs, SIGUSR1);
++    sigaddset(&blocked_sigs, SIGUSR2);
+     pthread_sigmask(SIG_BLOCK, &blocked_sigs, NULL);
+ 
+     /* libsmbclient doesn't work with reads bigger than 32k */
+@@ -1184,7 +1202,9 @@
+     if (notfound_cache == NULL)
+         exit(EXIT_FAILURE);
+ 
++    openlog("fusesmb", LOG_PID | LOG_CONS, LOG_USER);
+     fuse_main(my_argc, my_argv, &fusesmb_oper);
++    closelog();
+ 
+     smbc_free_context(ctx, 1);
+     smbc_free_context(rwd_ctx, 1);

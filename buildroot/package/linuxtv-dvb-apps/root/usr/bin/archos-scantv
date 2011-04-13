@@ -1,0 +1,24 @@
+#!/bin/sh
+TARGETDIR_USER=$HOME/.tzap
+TARGETDIR_SYSTEM=/etc
+if [ "$1" = "-scan-dvb" ] ; then
+  # scan dvb stations
+  dvbscan /usr/share/dvb/dvb-t/$2 > $TARGETDIR_SYSTEM/channels.conf
+
+  # copy channels.conf file in home directory
+  mkdir -p $TARGETDIR_USER
+  cp $TARGETDIR_SYSTEM/channels.conf $TARGETDIR_USER/channels.conf
+
+  # decode dvb stations
+  cat $TARGETDIR_SYSTEM/channels.conf | awk -F ":" '
+    BEGIN { i=1; printf("<ASX VERSION=\"3.0\">\n"); }
+    { if (($11!="0") && (substr($1,1,1)!="[")) printf("<ENTRY><TITLE>%s</TITLE><REF HREF=\"dvb://%s\" /><LOGO href=\"\" /></ENTRY>\n", $1, $1); }
+    END { printf("</ASX>"); }' > $TARGETDIR_SYSTEM/tnt.asx
+fi
+
+if [ "$1" = "-check-dvb" ] ; then
+  # copy channels.conf file in home directory
+  mkdir -p $TARGETDIR_USER
+  cp $TARGETDIR_SYSTEM/channels.conf $TARGETDIR_USER/channels.conf
+fi
+

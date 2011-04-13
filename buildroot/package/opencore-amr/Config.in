@@ -1,0 +1,7 @@
+config BR2_PACKAGE_OPENCORE_AMR
+	bool "opencore-amr"
+	default n
+	help
+	  Library of OpenCORE Framework implementation of Adaptive Multi Rate Narrowband and Wideband speech codec 
+
+	  http://opencore-amr.sourceforge.net/

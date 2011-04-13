@@ -1,0 +1,117 @@
+From de19518822931c34465ffa1c2696f5a000422166 Mon Sep 17 00:00:00 2001
+From: Rob Taylor <rob.taylor@codethink.co.uk>
+Date: Thu, 17 Jul 2008 15:12:02 +0200
+Subject: [PATCH] Attempt to fix the queue<->account refcount loop in a thread safe way.
+ Its now implicit that the lifetime of the queue muct be within the lifetime of the parent.
+
+---
+ libtinymail-camel/tny-camel-account.c       |    1 +
+ libtinymail-camel/tny-camel-queue-priv.h    |    1 +
+ libtinymail-camel/tny-camel-queue.c         |   28 +++++++++++++++++++++++---
+ libtinymail-camel/tny-camel-store-account.c |    1 +
+ 4 files changed, 27 insertions(+), 4 deletions(-)
+
+diff --git a/libtinymail-camel/tny-camel-account.c b/libtinymail-camel/tny-camel-account.c
+index b505c5a..9e2887f 100644
+--- a/libtinymail-camel/tny-camel-account.c
++++ b/libtinymail-camel/tny-camel-account.c
+@@ -2198,6 +2198,7 @@ tny_camel_account_finalize (GObject *object)
+ 
+ 	g_static_rec_mutex_unlock (priv->service_lock);
+ 
++	_tny_camel_queue_stop (priv->queue);
+ 	g_object_unref (priv->queue);
+ 	g_object_unref (priv->con_strat);
+ 
+diff --git a/libtinymail-camel/tny-camel-queue-priv.h b/libtinymail-camel/tny-camel-queue-priv.h
+index 4c658d0..ce86818 100644
+--- a/libtinymail-camel/tny-camel-queue-priv.h
++++ b/libtinymail-camel/tny-camel-queue-priv.h
+@@ -85,6 +85,7 @@ void _tny_camel_queue_launch (TnyCamelQueue *queue, GThreadFunc func, GSourceFun
+ void _tny_camel_queue_remove_items (TnyCamelQueue *queue, TnyCamelQueueItemFlags flags);
+ void _tny_camel_queue_cancel_remove_items (TnyCamelQueue *queue, TnyCamelQueueItemFlags flags);
+ gboolean _tny_camel_queue_has_items (TnyCamelQueue *queue, TnyCamelQueueItemFlags flags);
++void _tny_camel_queue_stop (TnyCamelQueue *queue);
+ 
+ G_END_DECLS
+ 
+diff --git a/libtinymail-camel/tny-camel-queue.c b/libtinymail-camel/tny-camel-queue.c
+index f50c2cb..df16402 100644
+--- a/libtinymail-camel/tny-camel-queue.c
++++ b/libtinymail-camel/tny-camel-queue.c
+@@ -271,20 +271,20 @@ tny_camel_queue_thread_main_func (gpointer user_data)
+ 			g_slice_free (QueueItem, item);
+ 
+ 		if (wait) {
++			g_object_ref (queue);
+ 			g_mutex_lock (queue->mutex);
+ 			queue->is_waiting = TRUE;
+ 			g_cond_wait (queue->condition, queue->mutex);
+ 			queue->is_waiting = FALSE;
+ 			g_mutex_unlock (queue->mutex);
++			g_object_unref (queue);
+ 		}
+ 	}
+ 
+-	queue->thread = NULL;
+ 	queue->stopped = TRUE;
+ 
+ 	g_object_unref (queue);
+-
+-	return NULL;
++	g_thread_exit (NULL);
+ }
+ 
+ 
+@@ -443,7 +443,7 @@ _tny_camel_queue_launch_wflags (TnyCamelQueue *queue, GThreadFunc func, GSourceF
+ 		queue->stopped = FALSE;
+ 		g_object_ref (queue);
+ 		queue->thread = g_thread_create (tny_camel_queue_thread_main_func, 
+-			queue, FALSE, &err);
++			queue, TRUE, &err);
+ 		if (err) {
+ 			queue->stopped = TRUE;
+ 		}
+@@ -513,6 +513,27 @@ _tny_camel_queue_has_items (TnyCamelQueue *queue, TnyCamelQueueItemFlags flags)
+ 
+ 	return retval;
+ }
++
++/**
++ * _tny_camel_queue_stop
++ * @queue: the queue
++ *
++ * Stop the thread and wait for it to finish
++ */
++void
++_tny_camel_queue_stop (TnyCamelQueue *queue)
++{
++
++	if (queue->thread) {
++		queue->stopped = TRUE;
++		g_mutex_lock (queue->mutex);
++		if (queue->is_waiting)
++			g_cond_broadcast (queue->condition);
++		g_mutex_unlock (queue->mutex);
++
++		g_thread_join (queue->thread);
++	}
++}
+ 
+ static void 
+ tny_camel_queue_class_init (TnyCamelQueueClass *class)
+diff --git a/libtinymail-camel/tny-camel-store-account.c b/libtinymail-camel/tny-camel-store-account.c
+index 4a59043..780e448 100644
+--- a/libtinymail-camel/tny-camel-store-account.c
++++ b/libtinymail-camel/tny-camel-store-account.c
+@@ -832,6 +832,7 @@ tny_camel_store_account_dispose (GObject *object)
+ 		camel_object_unref (CAMEL_OBJECT (priv->iter_store));
+ 	}
+ 
++	_tny_camel_queue_stop (priv->msg_queue);
+ 	g_object_unref (priv->msg_queue);
+ 
+ 	return;
+-- 
+1.5.6.3
+

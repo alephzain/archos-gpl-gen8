@@ -1,0 +1,4 @@
+config BR2_PACKAGE_LIBFAAC
+	bool "libfaac"
+	default n
+	help

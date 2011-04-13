@@ -1,0 +1,123 @@
+diff -Nur bluez-4.18/tools/hciattach.c bluez-4.18_patched/tools/hciattach.c
+--- bluez-4.18/tools/hciattach.c	2009-02-09 14:52:15.000000000 +0100
++++ bluez-4.18_patched/tools/hciattach.c	2009-02-09 14:56:10.000000000 +0100
+@@ -55,6 +55,7 @@
+ #define HCIUARTSETPROTO		_IOW('U', 200, int)
+ #define HCIUARTGETPROTO		_IOR('U', 201, int)
+ #define HCIUARTGETDEVICE	_IOR('U', 202, int)
++#define TIOSETBRFPOWER		0x6000
+ 
+ #define HCI_UART_H4	0
+ #define HCI_UART_BCSP	1
+@@ -78,6 +79,7 @@
+ #define FLOW_CTL	0x0001
+ 
+ static volatile sig_atomic_t __io_canceled = 0;
++static int myfd = -1;
+ 
+ static void sig_hup(int sig)
+ {
+@@ -86,11 +88,23 @@
+ static void sig_term(int sig)
+ {
+ 	__io_canceled = 1;
++
++	/* Power down the BRF chip */
++	if (myfd != -1) {
++		int power = 0;
++		ioctl(myfd, TIOSETBRFPOWER, &power);
++	}
+ }
+ 
+ static void sig_alarm(int sig)
+ {
+ 	fprintf(stderr, "Initialization timed out.\n");
++
++	/* Power down the BRF chip */
++	if (myfd != -1) {
++		int power = 0;
++		ioctl(myfd, TIOSETBRFPOWER, &power);
++	}
+ 	exit(1);
+ }
+ 
+@@ -1119,7 +1133,7 @@
+ int init_uart(char *dev, struct uart_t *u, int send_break)
+ {
+ 	struct termios ti;
+-	int fd, i;
++	int fd, i, power;
+ 
+ 	fd = open(dev, O_RDWR | O_NOCTTY);
+ 	if (fd < 0) {
+@@ -1160,33 +1174,46 @@
+ 		usleep(500000);
+ 	}
+ 
++	myfd = fd;
++	
++	/* Power up the BRF chip */
++	power = 1;
++	ioctl(fd, TIOSETBRFPOWER, &power);
++	sleep(1);
++
+ 	if (u->init && u->init(fd, u, &ti) < 0)
+-		return -1;
++		goto failed;
+ 
+ 	tcflush(fd, TCIOFLUSH);
+ 
+ 	/* Set actual baudrate */
+ 	if (set_speed(fd, &ti, u->speed) < 0) {
+ 		perror("Can't set baud rate");
+-		return -1;
++		goto failed;
+ 	}
+ 
+ 	/* Set TTY to N_HCI line discipline */
+ 	i = N_HCI;
+ 	if (ioctl(fd, TIOCSETD, &i) < 0) {
+ 		perror("Can't set line discipline");
+-		return -1;
++		goto failed;
+ 	}
+ 
+ 	if (ioctl(fd, HCIUARTSETPROTO, u->proto) < 0) {
+ 		perror("Can't set device");
+-		return -1;
++		goto failed;
+ 	}
+ 
+ 	if (u->post && u->post(fd, u, &ti) < 0)
+-		return -1;
++		goto failed;
+ 
+ 	return fd;
++failed:
++	/* Power down the BRF chip */
++	power = 0;
++	ioctl(fd, TIOSETBRFPOWER, &power);
++	myfd = -1;
++	return -1;
+ }
+ 
+ static void usage(void)
+@@ -1200,7 +1227,7 @@
+ int main(int argc, char *argv[])
+ {
+ 	struct uart_t *u = NULL;
+-	int detach, printpid, opt, i, n, ld, err;
++	int detach, printpid, opt, i, n, ld, err, power;
+ 	int to = 10;
+ 	int init_speed = 0;
+ 	int send_break = 0;
+@@ -1369,5 +1396,9 @@
+ 		exit(1);
+ 	}
+ 
++	/* Power down the BRF chip */
++	power = 0;
++	ioctl(n, TIOSETBRFPOWER, &power);
++
+ 	return 0;
+ }

@@ -1,0 +1,21 @@
+PAGE_SIZE and PAGE_MASK are not defined in asm/page.h on arm.
+Use getpagesize() instead.
+Index: qt-2.3.10/src/kernel/qpixmapcache.cpp
+===================================================================
+--- qt-2.3.10.orig/src/kernel/qpixmapcache.cpp	2008-05-30 10:52:19.122625760 +0200
++++ qt-2.3.10/src/kernel/qpixmapcache.cpp	2008-05-30 10:52:54.268628616 +0200
+@@ -124,7 +124,12 @@
+ # include <sys/mman.h> // madvise
+-# include <asm/page.h> // PAGE_SIZE,PAGE_MASK,PAGE_ALIGN
++//# include <asm/page.h> // PAGE_SIZE,PAGE_MASK,PAGE_ALIGN
+ # ifndef PAGE_ALIGN
+-# define PAGE_ALIGN(addr)	(((addr)+PAGE_SIZE-1)&PAGE_MASK)
++#include <unistd.h>
++inline int PAGE_ALIGN(int addr) {
++	int pageSize = getpagesize();
++	int pageMask = ~(pageSize - 1);
++	return (addr + pageSize - 1) & pageMask;
++}
+ # endif // PAGE_ALIGN
+ #endif // THROW_AWAY_UNUSED_PAGES 
+ 

@@ -1,0 +1,11 @@
+--- libwmf-0.2.8.4/configure.orig	2009-01-19 14:28:02.000000000 +0100
++++ libwmf-0.2.8.4/configure	2009-01-19 14:28:11.000000000 +0100
+@@ -25973,7 +25973,7 @@
+         if $PKG_CONFIG --exists "gdk-pixbuf-2.0 >= 2.1.2" ; then
+             echo "$as_me:$LINENO: result: yes" >&5
+ echo "${ECHO_T}yes" >&6
+-            succeeded=yes
++            succeeded=no
+ 
+             echo "$as_me:$LINENO: checking GDK_PIXBUF_CFLAGS" >&5
+ echo $ECHO_N "checking GDK_PIXBUF_CFLAGS... $ECHO_C" >&6

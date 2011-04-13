@@ -1,0 +1,9 @@
+config BR2_PACKAGE_BLUEZ_UTILS
+	bool "bluetooth protocol stack utils (V3)"
+	default n
+	select BR2_PACKAGE_DBUS
+	select BR2_PACKAGE_BLUEZ_LIBS
+	help
+	  Official Linux Bluetooth protocol stack
+
+	  http://www.bluez.org

@@ -1,0 +1,12 @@
+--- gcc-4.2.1_cortex/gcc/config/arm/arm.c.orig	2007-09-27 17:51:00.000000000 +0200
++++ gcc-4.2.1_cortex/gcc/config/arm/arm.c	2008-06-24 11:03:36.000000000 +0200
+@@ -11591,7 +11591,8 @@
+ 		  && count != 0
+ 		  && !current_function_calls_eh_return
+ 		  && bit_count(saved_regs_mask) * 4 == count
+-		  && !IS_INTERRUPT (func_type))
++		  && !IS_INTERRUPT (func_type)
++		  && !cfun->tail_call_emit)
+ 		{
+ 		  unsigned long mask;
+ 		  mask = (1 << (arm_size_return_regs() / 4)) - 1;

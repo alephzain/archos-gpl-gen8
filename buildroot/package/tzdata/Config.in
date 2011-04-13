@@ -1,0 +1,7 @@
+config BR2_PACKAGE_TZDATA
+	bool "tzdata"
+	default n
+	help
+	  Timezone data package.
+	  ftp://elsie.nci.nih.gov/pub/
+

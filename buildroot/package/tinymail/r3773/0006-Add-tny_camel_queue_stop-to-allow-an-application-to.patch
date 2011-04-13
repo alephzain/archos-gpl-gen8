@@ -1,0 +1,398 @@
+From b1bebe197c15ff714e27d2fe7eae1ea5cbb4f59a Mon Sep 17 00:00:00 2001
+From: Rob Taylor <rob.taylor@codethink.co.uk>
+Date: Thu, 31 Jul 2008 23:08:32 +0100
+Subject: [PATCH] Add tny_camel_queue_stop, to allow an application to request that all
+ operations on an account stop and that no more operations ar started.
+
+---
+ libtinymail-camel/tny-camel-account.c       |   27 +++++++-
+ libtinymail-camel/tny-camel-account.h       |    5 +-
+ libtinymail-camel/tny-camel-queue-priv.h    |   10 ++-
+ libtinymail-camel/tny-camel-queue.c         |   97 ++++++++++++++++++++++----
+ libtinymail-camel/tny-camel-store-account.c |   47 +++++++++++++-
+ 5 files changed, 166 insertions(+), 20 deletions(-)
+
+diff --git a/libtinymail-camel/tny-camel-account.c b/libtinymail-camel/tny-camel-account.c
+index 9e2887f..c00561d 100644
+--- a/libtinymail-camel/tny-camel-account.c
++++ b/libtinymail-camel/tny-camel-account.c
+@@ -1871,6 +1871,30 @@ tny_camel_account_set_online_default (TnyCamelAccount *self, gboolean online, Tn
+ 	}
+ }
+ 
++
++/**
++ * tny_camel_account_stop:
++ * @self: a #TnyCamelAccount object
++ * @callback: a callback when the account has stopped all operations
++ * @user_data: user data for the callback
++ *
++ * Request a stop of all operations on an account
++ * @callback will be called with @user_data when all operations have stopped.
++ * The account will be unusable after calling this function.
++ **/
++void
++tny_camel_account_stop (TnyCamelAccount *self, TnyCamelAccountStopCallback callback, gpointer user_data)
++{
++	TNY_CAMEL_ACCOUNT_GET_CLASS (self)->stop(self, callback, user_data);
++}
++
++void
++tny_camel_account_stop_default (TnyCamelAccount *self, TnyCamelAccountStopCallback callback, gpointer user_data)
++{
++	TnyCamelAccountPriv *priv = TNY_CAMEL_ACCOUNT_GET_PRIVATE (self);
++	_tny_camel_queue_stop (priv->queue, callback, user_data);
++}
++
+ static gboolean
+ tny_camel_account_is_ready (TnyAccount *self)
+ {
+@@ -2198,7 +2222,7 @@ tny_camel_account_finalize (GObject *object)
+ 
+ 	g_static_rec_mutex_unlock (priv->service_lock);
+ 
+-	_tny_camel_queue_stop (priv->queue);
++	_tny_camel_queue_stop (priv->queue, NULL, NULL);
+ 	g_object_unref (priv->queue);
+ 	g_object_unref (priv->con_strat);
+ 
+@@ -2319,6 +2343,7 @@ tny_camel_account_class_init (TnyCamelAccountClass *class)
+ 	class->get_options= tny_camel_account_get_options_default;
+ 
+ 	class->set_online= tny_camel_account_set_online_default;
++	class->stop = tny_camel_account_stop_default;
+ 
+ 	object_class->finalize = tny_camel_account_finalize;
+ 
+diff --git a/libtinymail-camel/tny-camel-account.h b/libtinymail-camel/tny-camel-account.h
+index 992d9e5..f25a67d 100644
+--- a/libtinymail-camel/tny-camel-account.h
++++ b/libtinymail-camel/tny-camel-account.h
+@@ -32,7 +32,7 @@ G_BEGIN_DECLS
+ #define TNY_CAMEL_ACCOUNT(obj)             (G_TYPE_CHECK_INSTANCE_CAST ((obj), TNY_TYPE_CAMEL_ACCOUNT, TnyCamelAccount))
+ #define TNY_CAMEL_ACCOUNT_CLASS(vtable)    (G_TYPE_CHECK_CLASS_CAST ((vtable), TNY_TYPE_CAMEL_ACCOUNT, TnyCamelAccountClass))
+ #define TNY_IS_CAMEL_ACCOUNT(obj)          (G_TYPE_CHECK_INSTANCE_TYPE ((obj), TNY_TYPE_CAMEL_ACCOUNT))
+-#define TNY_IS_ACAMEL_CCOUNT_CLASS(vtable) (G_TYPE_CHECK_CLASS_TYPE ((vtable), TNY_TYPE_CAMEL_ACCOUNT))
++#define TNY_IS_CAMEL_ACCOUNT_CLASS(vtable) (G_TYPE_CHECK_CLASS_TYPE ((vtable), TNY_TYPE_CAMEL_ACCOUNT))
+ #define TNY_CAMEL_ACCOUNT_GET_CLASS(inst)  (G_TYPE_INSTANCE_GET_CLASS ((inst), TNY_TYPE_CAMEL_ACCOUNT, TnyCamelAccountClass))
+ 
+ /* This is an abstract type, you cannot (should not) instantiate it */
+@@ -50,6 +50,7 @@ extern guint tny_camel_account_signals [TNY_CAMEL_ACCOUNT_LAST_SIGNAL];
+ 
+ typedef void (*TnyCamelSetOnlineCallback) (TnyCamelAccount *account, gboolean canceled, GError *err, gpointer user_data);
+ 
++typedef void (*TnyCamelAccountStopCallback) (gpointer user_data);
+ 
+ struct _TnyCamelAccount
+ {
+@@ -94,6 +95,7 @@ struct _TnyCamelAccountClass
+ 	void (*get_options) (TnyCamelAccount *self, TnyList *options);
+ 
+ 	void (*set_online) (TnyCamelAccount *self, gboolean online, TnyCamelSetOnlineCallback callback, gpointer user_data);
++	void (*stop) (TnyCamelAccount *self, TnyCamelAccountStopCallback callback, gpointer user_data);
+ 
+ 	/* Abstract methods */
+ 	void (*prepare) (TnyCamelAccount *self, gboolean recon_if, gboolean reservice);
+@@ -115,6 +117,7 @@ void tny_camel_account_set_online (TnyCamelAccount *self, gboolean online, TnyCa
+ typedef void (*TnyCamelGetSupportedSecureAuthCallback) (TnyCamelAccount *self, gboolean cancelled, TnyList *auth_types, GError *err, gpointer user_data);
+ void tny_camel_account_get_supported_secure_authentication(TnyCamelAccount *self, TnyCamelGetSupportedSecureAuthCallback callback, TnyStatusCallback status_callback, gpointer user_data);
+ 
++void tny_camel_account_stop (TnyCamelAccount *self, TnyCamelAccountStopCallback callback, gpointer user_data);
+ G_END_DECLS
+ 
+ #endif
+diff --git a/libtinymail-camel/tny-camel-queue-priv.h b/libtinymail-camel/tny-camel-queue-priv.h
+index ce86818..e12bb1d 100644
+--- a/libtinymail-camel/tny-camel-queue-priv.h
++++ b/libtinymail-camel/tny-camel-queue-priv.h
+@@ -37,6 +37,7 @@ G_BEGIN_DECLS
+ typedef struct _TnyCamelQueue TnyCamelQueue;
+ typedef struct _TnyCamelQueueable TnyCamelQueueable;
+ typedef struct _TnyCamelQueueClass TnyCamelQueueClass;
++typedef void (*TnyCamelQueueStopCb)(gpointer);
+ 
+ struct _TnyCamelQueue
+ {
+@@ -49,8 +50,13 @@ struct _TnyCamelQueue
+ 	GMutex *mutex;
+ 	gboolean is_waiting;
+ 	GStaticRecMutex *lock;
+-	gboolean stopped, next_uncancel;
++	gboolean stop;
++	gboolean running;
++	gboolean dead;
++	gboolean next_uncancel;
+ 	gpointer current;
++	TnyCamelQueueStopCb stop_callback;
++	gpointer stop_user_data;
+ };
+ 
+ struct _TnyCamelQueueClass 
+@@ -85,7 +91,7 @@ void _tny_camel_queue_launch (TnyCamelQueue *queue, GThreadFunc func, GSourceFun
+ void _tny_camel_queue_remove_items (TnyCamelQueue *queue, TnyCamelQueueItemFlags flags);
+ void _tny_camel_queue_cancel_remove_items (TnyCamelQueue *queue, TnyCamelQueueItemFlags flags);
+ gboolean _tny_camel_queue_has_items (TnyCamelQueue *queue, TnyCamelQueueItemFlags flags);
+-void _tny_camel_queue_stop (TnyCamelQueue *queue);
++void _tny_camel_queue_stop (TnyCamelQueue *queue, TnyCamelQueueStopCb stop_cb, gpointer user_data);
+ 
+ G_END_DECLS
+ 
+diff --git a/libtinymail-camel/tny-camel-queue.c b/libtinymail-camel/tny-camel-queue.c
+index df16402..89b2fd1 100644
+--- a/libtinymail-camel/tny-camel-queue.c
++++ b/libtinymail-camel/tny-camel-queue.c
+@@ -46,7 +46,7 @@ tny_camel_queue_finalize (GObject *object)
+ {
+ 	TnyCamelQueue *self = (TnyCamelQueue*) object;
+ 
+-	self->stopped = TRUE;
++	self->stop = TRUE;
+ 
+ 	g_mutex_lock (self->mutex);
+ 	if (self->account)
+@@ -75,7 +75,7 @@ account_finalized (TnyCamelQueue *queue, GObject *finalized_account)
+ {
+ 	g_mutex_lock (queue->mutex);
+ 	queue->account = NULL;
+-	queue->stopped = TRUE;
++	queue->stop = TRUE;
+ 	if (queue->is_waiting) {
+ 		g_cond_broadcast (queue->condition);
+ 	}
+@@ -101,6 +101,32 @@ _tny_camel_queue_new (TnyCamelAccount *account)
+ 	return TNY_CAMEL_QUEUE (self);
+ }
+ 
++typedef struct _StopCallbackData StopCallbackData;
++struct _StopCallbackData
++{
++	TnyCamelQueueStopCb cb;
++	gpointer data;
++};
++
++static gboolean
++call_stop_callback (gpointer user_data)
++{
++	StopCallbackData *data = user_data;
++	data->cb(data->data);
++	g_slice_free (StopCallbackData, data);
++	return FALSE;
++}
++
++static void
++idle_add_stop_callback (TnyCamelQueueStopCb cb, gpointer data)
++{
++	StopCallbackData *scd = g_slice_new (StopCallbackData);
++	scd->cb = cb;
++	scd->data = data;
++	g_idle_add (call_stop_callback, scd);
++}
++
++
+ typedef struct
+ {
+ 	GThreadFunc func;
+@@ -184,7 +210,7 @@ tny_camel_queue_thread_main_func (gpointer user_data)
+ {
+ 	TnyCamelQueue *queue = user_data;
+ 
+-	while (!queue->stopped)
++	while (!queue->stop || queue->list)
+ 	{
+ 		GList *first = NULL;
+ 		QueueItem *item = NULL;
+@@ -270,7 +296,7 @@ tny_camel_queue_thread_main_func (gpointer user_data)
+ 		if (item)
+ 			g_slice_free (QueueItem, item);
+ 
+-		if (wait) {
++		if (wait && !queue->stop) {
+ 			g_object_ref (queue);
+ 			g_mutex_lock (queue->mutex);
+ 			queue->is_waiting = TRUE;
+@@ -281,7 +307,14 @@ tny_camel_queue_thread_main_func (gpointer user_data)
+ 		}
+ 	}
+ 
+-	queue->stopped = TRUE;
++	queue->running = FALSE;
++
++	g_static_rec_mutex_lock (queue->lock);
++	if (queue->stop_callback) {
++		g_debug("Calling stop callback");
++		idle_add_stop_callback (queue->stop_callback, queue->stop_user_data);
++	}
++	g_static_rec_mutex_unlock (queue->lock);
+ 
+ 	g_object_unref (queue);
+ 	g_thread_exit (NULL);
+@@ -396,7 +429,16 @@ _tny_camel_queue_cancel_remove_items (TnyCamelQueue *queue, TnyCamelQueueItemFla
+ void 
+ _tny_camel_queue_launch_wflags (TnyCamelQueue *queue, GThreadFunc func, GSourceFunc callback, GDestroyNotify destroyer, GSourceFunc cancel_callback, GDestroyNotify cancel_destroyer, gboolean *cancel_field, gpointer data, gsize data_size, TnyCamelQueueItemFlags flags, const gchar *name)
+ {
+-	QueueItem *item = g_slice_new (QueueItem);
++	QueueItem *item;
++
++	if (queue->dead) {
++		/* just cancel straight away if this queue is dead*/
++		cancel_callback (data);
++		cancel_destroyer (data);
++		return;
++	}
++
++	item = g_slice_new (QueueItem);
+ 
+ 	if (!g_thread_supported ())
+ 		g_thread_init (NULL);
+@@ -437,15 +479,18 @@ _tny_camel_queue_launch_wflags (TnyCamelQueue *queue, GThreadFunc func, GSourceF
+ 	} else /* Normal items simply get appended */
+ 		queue->list = g_list_append (queue->list, item);
+ 
+-	if (queue->stopped) 
++	if (!queue->running) 
+ 	{
+ 		GError *err = NULL;
+-		queue->stopped = FALSE;
++		queue->stop = FALSE;
+ 		g_object_ref (queue);
++
++		queue->running = TRUE;
++
+ 		queue->thread = g_thread_create (tny_camel_queue_thread_main_func, 
+ 			queue, TRUE, &err);
+ 		if (err) {
+-			queue->stopped = TRUE;
++			g_object_unref (queue);
+ 		}
+ 	} else {
+ 		g_mutex_lock (queue->mutex);
+@@ -521,18 +566,38 @@ _tny_camel_queue_has_items (TnyCamelQueue *queue, TnyCamelQueueItemFlags flags)
+  * Stop the thread and wait for it to finish
+  */
+ void
+-_tny_camel_queue_stop (TnyCamelQueue *queue)
++_tny_camel_queue_stop (TnyCamelQueue *queue, TnyCamelQueueStopCb stop_cb, gpointer user_data)
+ {
+ 
+-	if (queue->thread) {
+-		queue->stopped = TRUE;
++	g_static_rec_mutex_lock (queue->lock);
++
++	if (queue->dead) {
++		g_warning ("stop called on already dead queue");
++		if (stop_cb)
++			idle_add_stop_callback (stop_cb, user_data);
++		return;
++	}
++	queue->dead = TRUE;
++
++	if (stop_cb) {
++		if (!queue->running) {
++			idle_add_stop_callback (stop_cb, user_data);
++		} else {
++			queue->stop_callback = stop_cb;
++			queue->stop_user_data = user_data;
++		}
++	}
++
++	if (queue->running) {
++		queue->stop = TRUE;
++
+ 		g_mutex_lock (queue->mutex);
+ 		if (queue->is_waiting)
+ 			g_cond_broadcast (queue->condition);
+ 		g_mutex_unlock (queue->mutex);
+-
+-		g_thread_join (queue->thread);
+ 	}
++
++	g_static_rec_mutex_unlock (queue->lock);
+ }
+ 
+ static void 
+@@ -558,7 +623,9 @@ tny_camel_queue_instance_init (GTypeInstance *instance, gpointer g_class)
+ 	self->mutex = g_mutex_new ();
+ 	self->condition = g_cond_new ();
+ 	self->account = NULL;
+-	self->stopped = TRUE;
++	self->stop = FALSE;
++	self->running = FALSE;
++	self->dead = FALSE;
+ 	self->list = NULL;
+ 
+ 	/* We don't use a GThreadPool because we need control over the queued
+diff --git a/libtinymail-camel/tny-camel-store-account.c b/libtinymail-camel/tny-camel-store-account.c
+index d480bf1..31c2a70 100644
+--- a/libtinymail-camel/tny-camel-store-account.c
++++ b/libtinymail-camel/tny-camel-store-account.c
+@@ -540,6 +540,50 @@ tny_camel_store_account_prepare (TnyCamelAccount *self, gboolean recon_if, gbool
+ 	g_static_rec_mutex_unlock (apriv->service_lock);
+ }
+ 
++typedef struct _StopData StopData;
++struct _StopData
++{
++	TnyCamelAccountStopCallback cb;
++	gpointer data;
++	gboolean account_done;
++	gboolean store_account_done;
++};
++
++void account_done_cb (gpointer data)
++{
++	StopData *sd = data;
++	sd->account_done = TRUE;
++	if (sd->account_done && sd->store_account_done) {
++		sd->cb (sd->data);
++		g_slice_free (StopData, sd);
++	}
++}
++
++void store_account_done_cb (gpointer data)
++{
++	StopData *sd = data;
++	sd->store_account_done = TRUE;
++	if (sd->account_done && sd->store_account_done) {
++		sd->cb (sd->data);
++		g_slice_free (StopData, sd);
++	}
++}
++
++static void
++tny_camel_store_account_stop (TnyCamelAccount *self, TnyCamelAccountStopCallback callback, gpointer user_data)
++{
++	TnyCamelAccountPriv *apriv = TNY_CAMEL_ACCOUNT_GET_PRIVATE (self);
++	TnyCamelStoreAccountPriv *priv = TNY_CAMEL_STORE_ACCOUNT_GET_PRIVATE (self);
++	
++	StopData *data = g_slice_new0 (StopData);
++	data->cb = callback;
++	data->data = user_data;
++
++	_tny_camel_queue_stop (apriv->queue, account_done_cb, data);
++	_tny_camel_queue_stop (priv->msg_queue, store_account_done_cb, data);
++}
++
++
+ static void 
+ tny_camel_store_account_try_connect (TnyAccount *self, GError **err)
+ {
+@@ -832,7 +876,7 @@ tny_camel_store_account_dispose (GObject *object)
+ 		camel_object_unref (CAMEL_OBJECT (priv->iter_store));
+ 	}
+ 
+-	_tny_camel_queue_stop (priv->msg_queue);
++	_tny_camel_queue_stop (priv->msg_queue, NULL, NULL);
+ 	g_object_unref (priv->msg_queue);
+ 
+ 	return;
+@@ -2409,6 +2453,7 @@ tny_camel_store_account_class_init (TnyCamelStoreAccountClass *class)
+ 
+ 	TNY_CAMEL_ACCOUNT_CLASS (class)->try_connect= tny_camel_store_account_try_connect;
+ 	TNY_CAMEL_ACCOUNT_CLASS (class)->prepare= tny_camel_store_account_prepare;
++	TNY_CAMEL_ACCOUNT_CLASS (class)->stop = tny_camel_store_account_stop;
+ 
+ 	class->get_folders_async= tny_camel_store_account_get_folders_async_default;
+ 	class->get_folders= tny_camel_store_account_get_folders_default;
+-- 
+1.5.6.3
+

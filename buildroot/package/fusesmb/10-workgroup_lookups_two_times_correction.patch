@@ -1,0 +1,285 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/cache.c fusesmb-0.8.7/cache.c
+--- fusesmb-0.8.7.orig/cache.c	2009-04-01 12:32:58.000000000 +0200
++++ fusesmb-0.8.7/cache.c	2009-04-01 12:33:23.000000000 +0200
+@@ -49,6 +49,8 @@
+ #define MAX_SERVERLEN 255
+ #define MAX_WGLEN 255
+ 
++#define DBG if (1)
++
+ static pthread_t shutdown_thread;
+ static sigset_t blocked;
+ 
+@@ -145,7 +147,7 @@
+     char wg_cmd[512];
+     snprintf(wg_cmd, 512, "nmblookup '%s'", wg);
+ 
+-    printf("calling \"%s\"\n", wg_cmd);
++    DBG syslog(LOG_DEBUG, "calling \"%s\"\n", wg_cmd);
+     FILE *pipe = apopen(wg_cmd, "r");
+ 
+     if (pipe == NULL)
+@@ -206,7 +208,7 @@
+     }
+     debug("%s\n", ip_cmd);
+ 
+-    printf("calling \"%s\"\n", ip_cmd);
++    DBG syslog(LOG_DEBUG, "calling \"%s\"\n", ip_cmd);
+     pipe = apopen(ip_cmd, "r");
+ 
+     if (pipe == NULL)
+@@ -300,7 +302,7 @@
+     dir = ctx->opendir(ctx, tmp_path);
+     if (dir == NULL)
+     {
+-        fprintf(stderr, "ctx->opendir failed (%s)\n", strerror(errno));
++        DBG syslog(LOG_DEBUG, "ctx->opendir failed (%s)\n", strerror(errno));
+         ctx->closedir(ctx, dir);
+         pthread_mutex_unlock(&ctx_mutex);
+         int len = strlen(wg)+ strlen(sv) + 3;
+@@ -311,7 +313,7 @@
+         if (-1 == sl_add(cache, tmp, 1))
+         {
+             pthread_mutex_unlock(&cache_mutex);
+-            fprintf(stderr, "sl_add failed\n");
++            DBG syslog(LOG_DEBUG, "sl_add failed\n");
+             return -1;
+         }
+         pthread_mutex_unlock(&cache_mutex);
+@@ -335,7 +337,7 @@
+         if (-1 == sl_add(cache, tmp, 1))
+         {
+             pthread_mutex_unlock(&cache_mutex);
+-            fprintf(stderr, "sl_add failed\n");
++            DBG syslog(LOG_DEBUG, "sl_add failed\n");
+             ctx->closedir(ctx, dir);
+             pthread_mutex_unlock(&ctx_mutex);
+             return -1;
+@@ -353,12 +355,12 @@
+     pthread_mutex_lock(&startup_mutex);
+     num_threads_waiting++;
+     pthread_cond_signal(&count_cv);
+-    fprintf(stderr, "signaled...\n");
+-    fprintf(stderr, "waiting for GO...\n");
++    DBG syslog(LOG_DEBUG, "signaled...\n");
++    DBG syslog(LOG_DEBUG, "waiting for GO...\n");
+     pthread_cond_wait(&go_cv, &startup_mutex);
+     pthread_mutex_unlock(&startup_mutex);
+ 
+-    fprintf(stderr, "workgroup_listing_thread starting to run\n");
++    DBG syslog(LOG_DEBUG, "workgroup_listing_thread starting to run\n");
+ 
+     char *wg = (char *)args;
+ 
+@@ -369,7 +371,7 @@
+     stringlist_t *servers = sl_init();
+     if (NULL == servers)
+     {
+-        fprintf(stderr, "Malloc failed\n");
++        DBG syslog(LOG_DEBUG, "Malloc failed\n");
+         return NULL;
+     }
+ 
+@@ -384,29 +386,27 @@
+ 
+     if (dir == NULL)
+     {
++        DBG syslog(LOG_DEBUG, "Using the nmblookup method for '%s'", wg);
+         ctx->closedir(ctx, dir);
+         pthread_mutex_unlock(&ctx_mutex);
+-        goto use_popen;
++        nmblookup(wg, servers, ip_cache);
+     }
+-    while (NULL != (server_dirent = ctx->readdir(ctx, dir)))
+-    {
+-        if (server_dirent->namelen == 0 ||
+-            server_dirent->smbc_type != SMBC_SERVER)
++    else {
++        DBG syslog(LOG_DEBUG, "Using the ctx->readdir method for '%s'", wg);
++        while (NULL != (server_dirent = ctx->readdir(ctx, dir)))
+         {
+-            continue;
+-        }
+-
+-        if (-1 == sl_add(servers, server_dirent->name, 1))
+-            continue;
+-
++            if (server_dirent->namelen == 0 ||
++                server_dirent->smbc_type != SMBC_SERVER)
++            {
++                continue;
++            }
+ 
++            if (-1 == sl_add(servers, server_dirent->name, 1))
++                continue;
++        }
++        ctx->closedir(ctx, dir);
++        pthread_mutex_unlock(&ctx_mutex);
+     }
+-    ctx->closedir(ctx, dir);
+-    pthread_mutex_unlock(&ctx_mutex);
+-
+-use_popen:
+-
+-    nmblookup(wg, servers, ip_cache);
+     sl_casesort(servers);
+ 
+     size_t i;
+@@ -461,6 +461,7 @@
+ 
+ int cache_servers(SMBCCTX *ctx)
+ {
++    DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     SMBCFILE *dir;
+     struct smbc_dirent *workgroup_dirent;
+ 
+@@ -468,6 +469,8 @@
+     cache = sl_init();
+     size_t i;
+ 
++    DBG syslog(LOG_DEBUG, "ctx->opendir(ctx, \"smb://\");");
++
+     dir = ctx->opendir(ctx, "smb://");
+ 
+     if (dir == NULL)
+@@ -477,6 +480,8 @@
+         return -1;
+     }
+ 
++    DBG syslog(LOG_DEBUG, "ctx->opendir(ctx, \"smb://\"); READY!");
++
+     pthread_t *threads;
+     threads = (pthread_t *)malloc(sizeof(pthread_t));
+     if (NULL == threads)
+@@ -518,7 +523,7 @@
+ 
+         if (rc)
+         {
+-            fprintf(stderr, "Failed to create thread for workgroup: %s\n", workgroup_dirent->name);
++            DBG syslog(LOG_DEBUG, "Failed to create thread for workgroup: %s", workgroup_dirent->name);
+             free(thread_arg);
+             continue;
+         }
+@@ -528,14 +533,14 @@
+     ctx->closedir(ctx, dir);
+     pthread_mutex_unlock(&ctx_mutex);
+ 
+-    fprintf(stderr, "we have to wait for %i threads\n", num_threads);
++    DBG syslog(LOG_DEBUG, "we have to wait for %i threads", num_threads);
+     pthread_mutex_lock(&startup_mutex);
+     while ( num_threads_waiting < num_threads ) {
+         pthread_cond_wait(&count_cv, &startup_mutex);
+-        fprintf(stderr, "Condition signal received (%i/%i).\n", num_threads_waiting, num_threads);
++        DBG syslog(LOG_DEBUG, "Condition signal received (%i/%i).", num_threads_waiting, num_threads);
+     }
+     pthread_mutex_unlock(&startup_mutex);
+-    fprintf(stderr, "giving all threads a GO!\n");
++    syslog(LOG_DEBUG, "giving all threads a GO!");
+     pthread_cond_broadcast(&go_cv);
+ 
+     pthread_attr_destroy(&thread_attr);
+@@ -545,7 +550,7 @@
+         int rc = pthread_join(threads[i], NULL);
+         if (rc)
+         {
+-            fprintf(stderr, "Error while joining thread, errorcode: %d\n", rc);
++            DBG syslog(LOG_DEBUG, "Error while joining thread, errorcode: %d", rc);
+             exit(-1);
+         }
+     }
+@@ -591,11 +596,14 @@
+ 
+ static void *shutdown_check(void* arg)
+ {
++syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     sigfillset(&blocked);
+     if ( pthread_sigmask(SIG_SETMASK, &blocked, NULL) ) {
+-        fprintf(stderr, "sigmask failed: %s\n", strerror(errno));
++        DBG syslog(LOG_DEBUG, "sigmask failed: %s", strerror(errno));
+     }
+ 
++    DBG syslog(LOG_DEBUG, "tid: %i # %s: %i sigprocmask", pthread_self(), __FUNCTION__, __LINE__);
++
+     FILE *fp = fopen(pidfile, "w");
+     if (NULL == fp) {
+         exit(EXIT_FAILURE);
+@@ -603,18 +611,22 @@
+     fprintf(fp, "%i\n", getpid());
+     fclose(fp);
+ 
++    DBG syslog(LOG_DEBUG, "tid: %i # %s: %i wrote pid", pthread_self(), __FUNCTION__, __LINE__);
++
+     int signum;
+     while ( 1 ) {
+         sigwait(&blocked, &signum);
+-        fprintf(stderr, "received signal %i\n", signum);
++        DBG syslog(LOG_DEBUG, "received signal %i", signum);
+ 
+         if ( signum == SIGUSR1 ) {
+             break;
+         }
+     }
++    DBG syslog(LOG_DEBUG, "tid: %i # %s: %i killing all", pthread_self(), __FUNCTION__, __LINE__);
+ 
+     apopen_shutdown();
+-    exit(EXIT_FAILURE);
++    _exit(EXIT_FAILURE);
++    syslog(LOG_DEBUG, "tid: %i # %s: %i ;should never be reached", pthread_self(), __FUNCTION__, __LINE__);
+ 
+     return NULL;  // keep the compiler happy
+ }
+@@ -623,13 +635,15 @@
+ {
+     int rc = pthread_create(&shutdown_thread, NULL, shutdown_check, NULL);
+     if ( rc ) {
+-        fprintf(stderr, "failed to start the shutdown thread\n");
++        DBG syslog(LOG_DEBUG, "failed to start the shutdown thread\n");
+         exit(EXIT_FAILURE);
+     }
+ }
+ 
+ int main(int argc, char *argv[])
+ {
++    openlog("fusesmb.cache", LOG_CONS | LOG_PID, LOG_USER);
++
+ #ifndef ARCHOS
+     snprintf(pidfile, 1024, "%s/.smb/fusesmb.cache.pid", getenv("HOME"));
+ #else
+@@ -644,7 +658,7 @@
+ #endif
+     if (-1 == config_init(&cfg, configfile))
+     {
+-        fprintf(stderr, "Could not open config file: %s (%s)", configfile, strerror(errno));
++        DBG syslog(LOG_DEBUG, "Could not open config file: %s (%s)", configfile, strerror(errno));
+         exit(EXIT_FAILURE);
+     }
+     options_read(&cfg, &opts);
+@@ -660,7 +674,7 @@
+                 unlink(pidfile);
+             else
+             {
+-                fprintf(stderr, "Error: %s is already running\n", argv[0]);
++                DBG syslog(LOG_DEBUG, "Error: %s is already running\n", argv[0]);
+                 exit(EXIT_FAILURE);
+             }
+         }
+@@ -693,17 +707,15 @@
+     }
+ 
+     install_shutdown_handler();
+-
+     SMBCCTX *ctx = fusesmb_cache_new_context(&cfg);
+-    openlog("fusesmb.cache", LOG_PID, LOG_USER);
+     cache_servers(ctx);
+-    closelog();
+     smbc_free_context(ctx, 1);
+     options_free(&opts);
+     if (argc == 1)
+     {
+         unlink(pidfile);
+     }
+-    exit(EXIT_SUCCESS);
++    closelog();
++    _exit(EXIT_SUCCESS);
+ }
+ 

@@ -1,0 +1,20 @@
+--- a/libtinymail-camel/tny-camel-store-account.c
++++ b/libtinymail-camel/tny-camel-store-account.c
+@@ -1475,7 +1475,7 @@
+ 		if (!refresh && CAMEL_IS_DISCO_STORE(store)) {
+ 			iter = CAMEL_DISCO_STORE_CLASS(CAMEL_OBJECT_GET_CLASS(store))->get_folder_info_offline(store,  "", 0, &ex);
+ 		} else {
+-			iter = camel_store_get_folder_info (store, "", 0, &ex);
++			iter = camel_store_get_folder_info (store, "", flags, &ex);
+ 		}
+ 
+ 	}
+@@ -1751,7 +1751,7 @@
+ 		flags |= CAMEL_STORE_FOLDER_INFO_SUBSCRIBED;
+ 
+ 
+-	iter = camel_store_get_folder_info (store, "", 0, &ex);
++	iter = camel_store_get_folder_info (store, "", flags, &ex);
+ 
+ 	if (camel_exception_is_set (&ex))
+ 	{

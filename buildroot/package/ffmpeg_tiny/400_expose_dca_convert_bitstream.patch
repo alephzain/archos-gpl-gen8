@@ -1,0 +1,30 @@
+--- libav/libavcodec/dca.c	2011-03-17 17:17:48.000000000 +0100
++++ libav_patched/libavcodec/dca.c	2011-03-17 22:09:01.000000000 +0100
+@@ -52,6 +52,9 @@
+ #define DCA_BLOCKS_MAX (16)
+ #define DCA_LFE_MAX (3)
+
++int av_dca_convert_bitstream(const uint8_t * src, int src_size, uint8_t * dst,
++                          int max_size);
++
+ enum DCAMode {
+     DCA_MONO = 0,
+     DCA_CHANNEL,
+@@ -1306,7 +1309,7 @@
+ /**
+  * Convert bitstream to one representation based on sync marker
+  */
+-static int dca_convert_bitstream(const uint8_t * src, int src_size, uint8_t * dst,
++int av_dca_convert_bitstream(const uint8_t * src, int src_size, uint8_t * dst,
+                           int max_size)
+ {
+     uint32_t mrk;
+@@ -1634,7 +1637,7 @@
+ 
+     s->xch_present = 0;
+ 
+-    s->dca_buffer_size = dca_convert_bitstream(buf, buf_size, s->dca_buffer,
++    s->dca_buffer_size = av_dca_convert_bitstream(buf, buf_size, s->dca_buffer,
+                                                DCA_MAX_FRAME_SIZE + DCA_MAX_EXSS_HEADER_SIZE);
+     if (s->dca_buffer_size == -1) {
+         av_log(avctx, AV_LOG_ERROR, "Not a valid DCA frame\n");

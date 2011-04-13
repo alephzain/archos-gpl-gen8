@@ -1,0 +1,25 @@
+diff -uwbr binutils-2.19.1_org/bfd/elf32-arm.c binutils-2.19.1/bfd/elf32-arm.c
+--- binutils-2.19.1_org/bfd/elf32-arm.c	2009-10-14 14:31:17.000000000 +0200
++++ binutils-2.19.1/bfd/elf32-arm.c	2009-10-14 19:22:02.000000000 +0200
+@@ -8397,6 +8397,10 @@
+     {
+       if ((in_list->tag & 128) < 64)
+ 	{
++	  if( in_list->tag == 34 ) {
++	    // ignore Tag_CPU_unaligned_access warning
++	    break;
++	  }
+ 	  _bfd_error_handler
+ 	    (_("Warning: %B: Unknown EABI object attribute %d"),
+ 	     ibfd, in_list->tag);
+diff -uwbr binutils-2.19.1_org/include/elf/arm.h binutils-2.19.1/include/elf/arm.h
+--- binutils-2.19.1_org/include/elf/arm.h	2008-05-21 16:50:07.000000000 +0200
++++ binutils-2.19.1/include/elf/arm.h	2009-10-14 19:23:30.000000000 +0200
+@@ -272,6 +272,7 @@
+   Tag_ABI_optimization_goals,
+   Tag_ABI_FP_optimization_goals,
+   /* 32 is generic.  */
++  Tag_CPU_unaligned_access = 34,
+ };
+ 
+ #endif

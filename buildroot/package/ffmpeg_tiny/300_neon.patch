@@ -1,0 +1,11 @@
+--- ffmpeg_tiny_org/configure	2010-03-11 01:42:13.000000000 +0100
++++ ffmpeg_tiny/configure	2010-03-12 08:14:47.000000000 +0100
+@@ -2398,7 +2398,7 @@
+     enabled armv6t2 && check_asm armv6t2 '"movt r0, #0"'
+     enabled armvfp  && check_asm armvfp  '"fadds s0, s0, s0"'
+     enabled iwmmxt  && check_asm iwmmxt  '"wunpckelub wr6, wr4"'
+-    enabled neon    && check_asm neon    '"vadd.i16 q0, q0, q0"'
++    enabled neon    && check_asm neon    '"vadd.i16 q0, q0, q0"' -mfpu=neon
+ 
+     enabled_all armv6t2 shared !pic && enable_pic
+ 

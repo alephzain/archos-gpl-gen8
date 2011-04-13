@@ -1,0 +1,124 @@
+------------------------------------------------------------------------
+r51209 | gateau | 2008-08-26 14:48:39 +0200 (Tue, 26 Aug 2008) | 4 lines
+
+Returns all links in Page::getLinks()
+Necessary, otherwise the value returned by Page::linkId() does not match with
+the returned link list.
+
+------------------------------------------------------------------------
+r45060 | gateau | 2008-05-15 17:24:14 +0200 (Thu, 15 May 2008) | 2 lines
+
+Introduced a simple log system.
+
+------------------------------------------------------------------------
+r44128 | gateau | 2008-04-30 16:10:50 +0200 (Wed, 30 Apr 2008) | 2 lines
+
+Imported poppler package from avx/
+
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+r35290 | vapillon | 2007-11-07 11:20:42 +0100 (Wed, 07 Nov 2007) | 5 lines
+
+This branches is now the "trunk" for Gen5 development
+(1.7 for now)
+The actual trunk will now be used for Gen6 development.
+
+
+------------------------------------------------------------------------
+r30618 | schroeter | 2007-07-05 22:39:33 +0200 (Thu, 05 Jul 2007) | 2 lines
+
+render in interleaved color buffer
+
+------------------------------------------------------------------------
+r23434 | landau | 2007-03-15 11:02:16 +0100 (Thu, 15 Mar 2007) | 6 lines
+
+fix images and gzipped files properties :
+- take away svn:executable
+- assign the right MIME type to images
+
+I hope I did not miss any. I will do the same for AX04 and 1.6/1.7 branches.
+
+------------------------------------------------------------------------
+r14056 | welwarsky | 2006-10-09 21:54:38 +0200 (Mon, 09 Oct 2006) | 3 lines
+
+re-add
+CVS_NO_DIFF
+
+------------------------------------------------------------------------
+r14055 | welwarsky | 2006-10-09 21:52:28 +0200 (Mon, 09 Oct 2006) | 2 lines
+
+re-add
+
+------------------------------------------------------------------------
+r14052 | welwarsky | 2006-10-09 21:18:17 +0200 (Mon, 09 Oct 2006) | 3 lines
+
+GPL AUDIT: resurrection
+CVS_NO_DIFF
+
+------------------------------------------------------------------------
+r4896 | frank | 2006-04-20 19:47:13 +0200 (Thu, 20 Apr 2006) | 6 lines
+
+The test-poppler-qt program broke the build for some people.
+To prevent it from being build i had to modify a Makefile.am
+and then to run autoreconf updating the whole whooping
+autobuild system...
+*sigh*
+
+------------------------------------------------------------------------
+r4070 | frank | 2006-04-05 16:16:12 +0200 (Wed, 05 Apr 2006) | 2 lines
+
+The LINKS_BRANCH is closed. Merged all the changes back to the trunk.
+
+------------------------------------------------------------------------
+r3276 | frank | 2006-03-16 11:27:58 +0100 (Thu, 16 Mar 2006) | 3 lines
+
+Added a workaround for a FPE. A 16.16 fixed point variable has not enough
+range to calculate the slope of a path segment in every case.
+
+------------------------------------------------------------------------
+r3181 | frank | 2006-03-14 11:11:53 +0100 (Tue, 14 Mar 2006) | 3 lines
+
+Fixed the sqrt method. This patch was sent to me by
+Derek Noonburg (xpdf).
+
+------------------------------------------------------------------------
+r3179 | frank | 2006-03-14 10:42:34 +0100 (Tue, 14 Mar 2006) | 6 lines
+
+Added some archos specific methods taken from
+the default poppler repository.
+
+Replaced the dead slow getPixel/setPixel loops used
+by poppler-dev with faster memcopies.
+
+------------------------------------------------------------------------
+r3178 | frank | 2006-03-14 10:39:14 +0100 (Tue, 14 Mar 2006) | 4 lines
+
+Added a fix to compile against qt2
+Added some archos specific methods taken from
+the default poppler repository.
+
+------------------------------------------------------------------------
+r3177 | frank | 2006-03-14 10:34:54 +0100 (Tue, 14 Mar 2006) | 2 lines
+
+Fix to make the qt wrapper work with qt2.
+
+------------------------------------------------------------------------
+r3176 | frank | 2006-03-14 10:28:07 +0100 (Tue, 14 Mar 2006) | 4 lines
+
+Changed the internal xpdf bitmap format for RGB8 to be
+4 bytes (RGBA) . Now we can use a fast memcopy to create
+qimages again.
+
+------------------------------------------------------------------------
+r3175 | frank | 2006-03-14 10:20:04 +0100 (Tue, 14 Mar 2006) | 4 lines
+
+Fixed a floating point exception caused by putting the constant
+65536 into a 16.16 fixed point variable. Bug could be triggered
+with the document "OSDevWithCVS_3E.pdf".
+
+------------------------------------------------------------------------
+r3142 | frank | 2006-03-13 12:00:52 +0100 (Mon, 13 Mar 2006) | 2 lines
+
+Initial revision
+
+------------------------------------------------------------------------

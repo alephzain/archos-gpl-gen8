@@ -1,0 +1,54 @@
+#define QT_NO_IMAGEIO_BMP 
+#define QT_NO_IMAGEIO_BMP
+#define QT_NO_IMAGEIO_PPM
+#define QT_NO_IMAGEIO_XBM
+#define QT_NO_IMAGEIO_XPM
+#define QT_NO_MOVIE
+#define QT_NO_DRAGANDDROP
+#define QT_NO_ASYNC_IO
+#define QT_NO_ASYNC_IMAGE_IO
+#define QT_NO_CLIPBOARD
+#define QT_NO_SOUND
+#define QT_NO_PROPERTIES
+#define QT_NO_NETWORKPROTOCOL
+#define QT_NO_NETWORKPROTOCOL_FTP
+#define QT_NO_NETWORKPROTOCOL_HTTP
+#define QT_NO_PSPRINTER
+#define QT_NO_PRINTER
+#define QT_NO_TEXTVIEW
+#define QT_NO_TEXTBROWSER
+#define QT_NO_ICONVIEW
+#define QT_NO_LISTVIEW
+#define QT_NO_CANVAS
+#define QT_NO_DIAL
+#define QT_NO_LCDNUMBER
+#define QT_NO_IMAGE_TEXT
+#define QT_NO_BDF
+#define QT_NO_QWS_SAVEFONTS
+#define QT_NO_SEMIMODAL
+#define QT_NO_SIZEGRIP
+#define QT_NO_SPLITTER
+#define QT_NO_WORKSPACE
+#define QT_NO_STYLE_MOTIF
+#define QT_NO_STYLE_CDE
+#define QT_NO_STYLE_PLATINUM
+#define QT_NO_STYLE_SGI
+#define QT_NO_FILEDIALOG
+#define QT_NO_FONTDIALOG
+#define QT_NO_COLORDIALOG
+#define QT_NO_PRINTDIALOG
+#define QT_NO_INPUTDIALOG
+#define QT_NO_MESSAGEBOX
+#define QT_NO_PROGRESSDIALOG
+#define QT_NO_TABDIALOG
+#define QT_NO_WIZARD
+#define QT_NO_COLORNAMES
+
+// Speed savings: features that incur unacceptable performance penalty
+#define QT_NO_DOM
+#define QT_NO_EFFECTS
+#define QT_NO_TRANSFORMATIONS
+
+// not so sure about those two...
+#define QT_NO_UNICODETABLES
+

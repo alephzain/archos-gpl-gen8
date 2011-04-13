@@ -1,0 +1,49 @@
+diff -Naur a/djmount/device_list.c b/djmount/device_list.c
+--- a/djmount/device_list.c	2006-08-27 22:12:20.000000000 +0200
++++ b/djmount/device_list.c	2010-06-23 16:08:32.000000000 +0200
+@@ -27,7 +27,10 @@
+ #ifdef HAVE_CONFIG_H
+ #	include <config.h>
+ #endif
+-
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <unistd.h>
+ #include "device_list.h"
+ #include "device.h"
+ #include "upnp_util.h"
+@@ -295,8 +298,13 @@
+ 	 * waiting for up to 5 seconds for the response 
+ 	 */
+ 	Log_Printf (LOG_DEBUG, "RefreshAll target=%s", NN(g_ssdp_target));
+-	int rc = UpnpSearchAsync (g_ctrlpt_handle, 5 /* seconds */, 
++	int rc = UpnpSearchAsync (g_ctrlpt_handle, 30 /* seconds */, 
+ 				  g_ssdp_target, NULL);
++	int fd;
++	fd = open("/tmp/upnp_search_in_progress", O_APPEND|O_CREAT, 0666);
++	if (fd >= 0)
++	      close(fd);
++
+ 	if (UPNP_E_SUCCESS != rc) 
+ 		Log_Printf (LOG_ERROR, "Error sending search request %d", rc);
+ 	
+@@ -548,11 +556,13 @@
+ 	}
+     
+ 	case UPNP_DISCOVERY_SEARCH_TIMEOUT:
+-		/*
+-		 * Nothing to do here... 
+-		 */
+-		break;
+-		
++	{
++	    /*
++	     *  remove the "scan in progress" file to let the rest of the world know that discovery is finished
++	     */
++	    remove("/tmp/upnp_search_in_progress");
++	    break;
++	}
+ 	case UPNP_DISCOVERY_ADVERTISEMENT_BYEBYE:
+     	{
+ 		struct Upnp_Discovery* e = (struct Upnp_Discovery*) event;

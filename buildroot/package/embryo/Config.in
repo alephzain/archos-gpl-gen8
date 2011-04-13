@@ -1,0 +1,7 @@
+config BR2_PACKAGE_EMBRYO
+	bool "embryo"
+	default n
+	help
+	  Embryo is the Enlightenment library that loads and controls programs compiled in Small.
+
+	  http://www.enlightenment.org/

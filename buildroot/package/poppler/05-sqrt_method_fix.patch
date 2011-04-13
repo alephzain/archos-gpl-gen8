@@ -1,0 +1,12 @@
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/goo/FixedPoint.cc poppler-0.5.1/goo/FixedPoint.cc
+--- poppler-0.5.1.orig/goo/FixedPoint.cc	2005-09-16 20:29:18.000000000 +0200
++++ poppler-0.5.1/goo/FixedPoint.cc	2009-03-31 15:48:25.000000000 +0200
+@@ -24,7 +24,7 @@
+   if (x.val <= 0) {
+     y1.val = 0;
+   } else {
+-    y1.val = x.val >> 1;
++    y1.val = x.val == 1 ? 2 : x.val >> 1;
+     do {
+       y0.val = y1.val;
+       z = x / y0;

@@ -1,0 +1,12 @@
+config BR2_PACKAGE_EDJE
+	bool "edje"
+	default n
+	select BR2_PACKAGE_EINA
+	select BR2_PACKAGE_EET
+	select BR2_PACKAGE_EVAS
+	select BR2_PACKAGE_ECORE
+	select BR2_PACKAGE_EMBRYO
+	help
+	  Edje is the Enlightenment graphical layout and animation library.
+
+	  http://www.enlightenment.org/

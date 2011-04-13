@@ -1,0 +1,158 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/fusesmb.c fusesmb-0.8.7/fusesmb.c
+--- fusesmb-0.8.7.orig/fusesmb.c	2007-09-07 02:02:44.000000000 +0200
++++ fusesmb-0.8.7/fusesmb.c	2009-04-01 12:31:39.000000000 +0200
+@@ -36,6 +36,7 @@
+ #include <sys/param.h>
+ #include <sys/vfs.h>
+ #include <pthread.h>
++#include <signal.h>
+ #include <libsmbclient.h>
+ #include <time.h>
+ #include "debug.h"
+@@ -55,7 +56,7 @@
+ static pthread_mutex_t ctx_mutex = PTHREAD_MUTEX_INITIALIZER;
+ static pthread_mutex_t rwd_ctx_mutex = PTHREAD_MUTEX_INITIALIZER;
+ static SMBCCTX *ctx, *rwd_ctx;
+-pthread_t cleanup_thread;
++pthread_t cleanup_thread, config_thread;
+ 
+ /*
+  * Hash for storing files/directories that were not found, an optimisation
+@@ -115,6 +116,47 @@
+         free(opt->global_username);
+ }
+ 
++static void check_config_file()
++{
++    /* Look if any changes have been made to the configfile */
++    int changed;
++    pthread_mutex_lock(&cfg_mutex);
++    if (0 == (changed = config_reload_ifneeded(&cfg)))
++    {
++        /* Lookout for deadlocks !!!! (order of setting locks within locks) */
++        pthread_mutex_lock(&opts_mutex);
++        options_free(&opts);
++        options_read(&cfg, &opts);
++        pthread_mutex_unlock(&opts_mutex);
++    }
++    pthread_mutex_unlock(&cfg_mutex);
++
++    /* Prevent unnecessary locks within locks */
++    if (changed == 0)
++    {
++        pthread_mutex_lock(&ctx_mutex);
++        ctx->timeout = opts.global_timeout * 1000;
++        pthread_mutex_unlock(&ctx_mutex);
++
++        pthread_mutex_lock(&rwd_ctx_mutex);
++        rwd_ctx->timeout = opts.global_timeout * 1000;
++        pthread_mutex_unlock(&rwd_ctx_mutex);
++    }
++}
++
++static void *check_config_file_thread(void *p)
++{
++    sigset_t interesting_sigs;
++    int caught;
++
++    sigemptyset(&interesting_sigs);
++    sigaddset(&interesting_sigs, SIGUSR1);
++    while (1) {
++        sigwait(&interesting_sigs, &caught);
++        check_config_file();
++    }
++    return NULL;
++}
+ 
+ /*
+  * Thread for cleaning up connections to hosts, current interval of
+@@ -185,32 +227,7 @@
+             }
+         }
+ 
+-
+-        /* Look if any changes have been made to the configfile */
+-        int changed;
+-        pthread_mutex_lock(&cfg_mutex);
+-        if (0 == (changed = config_reload_ifneeded(&cfg)))
+-        {
+-            /* Lookout for deadlocks !!!! (order of setting locks within locks) */
+-            pthread_mutex_lock(&opts_mutex);
+-            options_free(&opts);
+-            options_read(&cfg, &opts);
+-            pthread_mutex_unlock(&opts_mutex);
+-        }
+-        pthread_mutex_unlock(&cfg_mutex);
+-
+-        /* Prevent unnecessary locks within locks */
+-        if (changed == 0)
+-        {
+-            pthread_mutex_lock(&ctx_mutex);
+-            ctx->timeout = opts.global_timeout * 1000;
+-            pthread_mutex_unlock(&ctx_mutex);
+-
+-            pthread_mutex_lock(&rwd_ctx_mutex);
+-            rwd_ctx->timeout = opts.global_timeout * 1000;
+-            pthread_mutex_unlock(&rwd_ctx_mutex);
+-        }
+-
++        check_config_file();
+ 
+         sleep(15);
+     }
+@@ -956,9 +973,30 @@
+ 
+ static void *fusesmb_init()
+ {
++    struct stat st;
++    char pidfile[1024];
++    snprintf(pidfile, 1024, "%s/.smb/fusesmb.pid", getenv("HOME"));
++    pid_t pid = getpid();
++
++    if (-1 != stat(pidfile, &st))
++    {
++        if (time(NULL) - st.st_mtime > 30*60)
++            unlink(pidfile);
++    }
++    mode_t oldmask;
++    oldmask = umask(077);
++    FILE *fp = fopen(pidfile, "w");
++    umask(oldmask);
++    if (NULL == fp)
++        exit(EXIT_FAILURE);
++    fprintf(fp, "%i\n", pid);
++    fclose(fp);
++
+     debug();
+     if (0 != pthread_create(&cleanup_thread, NULL, smb_purge_thread, NULL))
+         exit(EXIT_FAILURE);
++    if (0 != pthread_create(&config_thread, NULL, check_config_file_thread, NULL))
++        exit(EXIT_FAILURE);
+     return NULL;
+ }
+ 
+@@ -967,7 +1005,12 @@
+     (void)private_data;
+     pthread_cancel(cleanup_thread);
+     pthread_join(cleanup_thread, NULL);
++    pthread_cancel(config_thread);
++    pthread_join(config_thread, NULL);
+ 
++    char pidfile[1024];
++    snprintf(pidfile, 1024, "%s/.smb/fusesmb.pid", getenv("HOME"));
++    unlink(pidfile);
+ }
+ 
+ static struct fuse_operations fusesmb_oper = {
+@@ -1099,6 +1142,11 @@
+     if (my_argv == NULL)
+         exit(EXIT_FAILURE);
+ 
++    sigset_t blocked_sigs;
++    sigemptyset(&blocked_sigs);
++    sigaddset(&blocked_sigs, SIGUSR1);
++    pthread_sigmask(SIG_BLOCK, &blocked_sigs, NULL);
++
+     /* libsmbclient doesn't work with reads bigger than 32k */
+     char *max_read = "-omax_read=32768";
+ 

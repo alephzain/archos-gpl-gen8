@@ -1,0 +1,7 @@
+config BR2_PACKAGE_E_DBUS
+	bool "e_dbus"
+	default n
+	help
+	  E_Dbus is the Enlightenment library that interfaces to DBUS.
+
+	  http://www.enlightenment.org/

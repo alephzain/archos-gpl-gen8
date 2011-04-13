@@ -1,0 +1,27 @@
+From ae73a7b035ef63ff5ab757451db1658434788499 Mon Sep 17 00:00:00 2001
+From: Rob Taylor <rob.taylor@codethink.co.uk>
+Date: Thu, 17 Jul 2008 19:23:11 +0200
+Subject: [PATCH] Fix ref leak with the iter_store in tny_camel_store_account.
+
+---
+ libtinymail-camel/tny-camel-store-account.c |    4 ++++
+ 1 files changed, 4 insertions(+), 0 deletions(-)
+
+diff --git a/libtinymail-camel/tny-camel-store-account.c b/libtinymail-camel/tny-camel-store-account.c
+index 780e448..d480bf1 100644
+--- a/libtinymail-camel/tny-camel-store-account.c
++++ b/libtinymail-camel/tny-camel-store-account.c
+@@ -1724,6 +1724,10 @@ tny_camel_store_account_store_refresh (TnyFolderStore *self, GError **err)
+ 	}
+ 
+ 	priv->cant_reuse_iter = FALSE;
++
++	if (priv->iter_store) {
++		camel_object_unref (CAMEL_OBJECT (priv->iter_store));
++	}
+ 	camel_object_ref (CAMEL_OBJECT (store));
+ 	priv->iter_store = store;
+ 	priv->iter = iter;
+-- 
+1.5.6.3
+

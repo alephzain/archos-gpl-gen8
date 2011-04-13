@@ -1,0 +1,12 @@
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/splash/SplashFTFont.cc poppler-0.5.1/splash/SplashFTFont.cc
+--- poppler-0.5.1.orig/splash/SplashFTFont.cc	2006-01-23 15:42:27.000000000 +0100
++++ poppler-0.5.1/splash/SplashFTFont.cc	2009-03-31 15:48:24.000000000 +0200
+@@ -53,7 +53,7 @@
+   SplashFont(fontFileA, matA, fontFileA->engine->aa)
+ {
+   FT_Face face;
+-  SplashCoord size, div;
++  double size, div;
+   int x, y;
+ 
+   face = fontFileA->face;

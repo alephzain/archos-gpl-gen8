@@ -1,0 +1,30 @@
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/qt/poppler-page.cc poppler-0.5.1/qt/poppler-page.cc
+--- poppler-0.5.1.orig/qt/poppler-page.cc	2009-03-31 15:48:25.000000000 +0200
++++ poppler-0.5.1/qt/poppler-page.cc	2009-03-31 15:48:25.000000000 +0200
+@@ -268,17 +268,15 @@
+   int linkCnt = links->getNumLinks();
+   for (int i = 0; i < linkCnt; i++) {
+     ::Link *l = links->getLink(i);
+-    if (l->getAction()->getKind() == actionGoTo) {
+-      double x1, y1, x2, y2;
+-      int x1t, y1t, x2t, y2t;
+-      l->getRect(&x1, &y1, &x2, &y2);
+-      //qWarning("x1 = %f y1 = %f x2 = %f y2 = %f", x1, y1, x2, y2);
+-      SplashOutputDev *output = data->doc->data->getOutputDev();
+-      output->cvtUserToDev( x1, y1, &x1t, &y1t );
+-      output->cvtUserToDev( x2, y2, &x2t, &y2t );
+-      //qWarning("x1t = %i  y1t = %i x2t = %i  y2t = %i", x1t, y1t, x2t, y2t);
+-      ret.addLink(x1t, y1t, x2t, y2t, i);
+-    }
++    double x1, y1, x2, y2;
++    int x1t, y1t, x2t, y2t;
++    l->getRect(&x1, &y1, &x2, &y2);
++    //qWarning("x1 = %f y1 = %f x2 = %f y2 = %f", x1, y1, x2, y2);
++    SplashOutputDev *output = data->doc->data->getOutputDev();
++    output->cvtUserToDev( x1, y1, &x1t, &y1t );
++    output->cvtUserToDev( x2, y2, &x2t, &y2t );
++    //qWarning("x1t = %i  y1t = %i x2t = %i  y2t = %i", x1t, y1t, x2t, y2t);
++    ret.addLink(x1t, y1t, x2t, y2t, i);
+   }
+   return ret;
+ }

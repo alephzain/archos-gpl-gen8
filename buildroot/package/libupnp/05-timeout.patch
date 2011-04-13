@@ -1,0 +1,36 @@
+diff -X /home/marc/dontdiff -ruN libupnp-1.6.6.orig/upnp/src/inc/http_client.h libupnp-1.6.6/upnp/src/inc/http_client.h
+--- libupnp-1.6.6.orig/upnp/src/inc/http_client.h	2008-02-10 02:55:34.000000000 +0100
++++ libupnp-1.6.6/upnp/src/inc/http_client.h	2009-12-11 09:48:01.000000000 +0100
+@@ -74,7 +74,7 @@
+ #define TAB 9
+ #define CR 13
+ #define LF 10
+-#define RESPONSE_TIMEOUT 30
++#define RESPONSE_TIMEOUT 20
+ #define SOCKET_BUFFER_SIZE 5000
+ 
+ enum hostType { HOSTNAME, IPv4address };
+diff -X /home/marc/dontdiff -ruN libupnp-1.6.6.orig/upnp/src/inc/httpreadwrite.h libupnp-1.6.6/upnp/src/inc/httpreadwrite.h
+--- libupnp-1.6.6.orig/upnp/src/inc/httpreadwrite.h	2008-02-10 02:55:34.000000000 +0100
++++ libupnp-1.6.6/upnp/src/inc/httpreadwrite.h	2009-12-11 09:48:01.000000000 +0100
+@@ -38,7 +38,7 @@
+ #include "httpparser.h"
+ 
+ // timeout in secs
+-#define HTTP_DEFAULT_TIMEOUT	30
++#define HTTP_DEFAULT_TIMEOUT 	20
+ 
+ 
+ 
+diff -X /home/marc/dontdiff -ruN libupnp-1.6.6.orig/upnp/src/inc/upnpapi.h libupnp-1.6.6/upnp/src/inc/upnpapi.h
+--- libupnp-1.6.6.orig/upnp/src/inc/upnpapi.h	2009-12-11 09:45:48.000000000 +0100
++++ libupnp-1.6.6/upnp/src/inc/upnpapi.h	2009-12-11 09:48:01.000000000 +0100
+@@ -56,7 +56,7 @@
+ extern size_t g_maxContentLength;
+ 
+ // 30-second timeout
+-#define UPNP_TIMEOUT	30
++#define UPNP_TIMEOUT	20
+ 
+ typedef enum {HND_INVALID=-1,HND_CLIENT,HND_DEVICE} Upnp_Handle_Type;
+ 

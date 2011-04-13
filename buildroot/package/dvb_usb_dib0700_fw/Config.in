@@ -1,0 +1,5 @@
+config BR2_PACKAGE_DVB_USB_DIB0700_FW
+	bool "dvb-usb-dib0700 firmware"
+	default n
+	help
+	  Firmware for the Dibcom DIB0700 DVB-T usb module

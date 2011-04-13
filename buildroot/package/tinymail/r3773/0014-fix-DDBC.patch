@@ -1,0 +1,15 @@
+Index: libtinymail/tny-folder-store.c
+===================================================================
+--- a/libtinymail/tny-folder-store.c	(révision 37)
++++ b/libtinymail/tny-folder-store.c	(copie de travail)
+@@ -414,10 +414,6 @@
+ {
+ #ifdef DBC /* require */
+ 	g_assert (TNY_IS_FOLDER_STORE (self));
+-	g_assert (list);
+-	g_assert (TNY_IS_LIST (list));
+-	if (query)
+-		g_assert (TNY_IS_FOLDER_STORE_QUERY (query));
+ 	g_assert (TNY_FOLDER_STORE_GET_IFACE (self)->get_folders_async!= NULL);
+ #endif
+ 

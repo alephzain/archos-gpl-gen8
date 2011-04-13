@@ -1,0 +1,15 @@
+#!/bin/sh
+
+if test $# -ne 2
+then
+	echo "usage: $0 account password"
+	exit 1
+fi
+
+/opt/usr/bin/smbpasswd -x $1
+
+/opt/usr/bin/smbpasswd -s -a $1 << EOF
+$2
+$2
+EOF
+

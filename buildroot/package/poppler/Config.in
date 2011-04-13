@@ -1,0 +1,9 @@
+config BR2_PACKAGE_POPPLER
+        bool "poppler"
+        default n
+        select BR2_PACKAGE_FONTCONFIG
+        select BR2_PACKAGE_QTE
+        select BR2_QTE_VERSION_2_3_10
+        help
+        Poppler is a Xpdf based pdf rendering library. Beware you must
+        have avx/poppler checked out for this to actually work.

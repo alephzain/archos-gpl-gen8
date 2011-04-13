@@ -1,0 +1,214 @@
+--- dosfstools-2.11/dosfsck/common.h.orig	2004-02-25 11:07:01.000000000 +0200
++++ dosfstools-2.11/dosfsck/common.h	2008-02-20 17:45:20.000000000 +0200
+@@ -21,12 +21,12 @@
+ 
+ /* Like die, but appends an error message according to the state of errno. */
+ 
+-void *alloc(int size);
++void *alloc(size_t size);
+ 
+ /* mallocs SIZE bytes and returns a pointer to the data. Terminates the program
+    if malloc fails. */
+ 
+-void *qalloc(void **root,int size);
++void *qalloc(void **root,size_t size);
+ 
+ /* Like alloc, but registers the data area in a list described by ROOT. */
+ 
+--- dosfstools-2.11/dosfsck/common.c.orig	2003-05-15 21:39:16.000000000 +0300
++++ dosfstools-2.11/dosfsck/common.c	2008-03-05 15:15:55.000000000 +0200
+@@ -5,6 +5,10 @@
+ /* FAT32, VFAT, Atari format support, and various fixes additions May 1998
+  * by Roman Hodek <Roman.Hodek@informatik.uni-erlangen.de> */
+ 
++/* A simple block allocator to speed up and cut down the huge memory
++ * overhead of dosfsck allocs (with full 8GB file system, cuts 120MB
++ * memory usage to 80MB) 2008-02-13 by Eero Tamminen
++ * <eero.tamminen@nokia.com> */
+ 
+ #include <stdlib.h>
+ #include <stdio.h>
+@@ -14,6 +18,13 @@
+ 
+ #include "common.h"
+ 
++/* pointers to current larger allocation block used for small allocations */
++static void *block_head = NULL;
++static void *block_end  = NULL;
++
++#define BLOCK_ALLOC_SIZE (4096-8)  /* assume this is one page with libc overhead */
++#define MIN_ALLOC_FROM_BLOCK  127  /* use block alloc for anything smaller */
++
+ 
+ typedef struct _link {
+     void *data;
+@@ -45,7 +56,7 @@
+ }
+ 
+ 
+-void *alloc(int size)
++void *alloc(size_t size)
+ {
+     void *this;
+ 
+@@ -55,14 +66,52 @@
+ }
+ 
+ 
+-void *qalloc(void **root,int size)
++/* should be called only from qalloc().
++ * get small allocs from a larger block and add those larger
++ * blocks to linked list of qalloc()
++ */
++static void *qalloc_block(void **root, size_t size)
++{
++    void *ret;
++    if (size > MIN_ALLOC_FROM_BLOCK) {
++	 return NULL;
++    }
++    /* dosfsck doesn't use doubles, so it's safe to align just to 4 */
++    size = (size+3) & ~3;
++    if (!block_head || block_head + size > block_end) {
++        LINK *link = alloc(sizeof(LINK));
++        link->next = *root;
++        *root = link;
++
++        block_head = alloc(BLOCK_ALLOC_SIZE);
++        block_end = block_head + BLOCK_ALLOC_SIZE;
++        link->data = block_head;
++    }
++    ret = block_head;
++    block_head += size;
++    return ret;
++}
++
++static void qfree_blocks(void)
++{
++    block_head = block_end = NULL;
++}
++
++
++void *qalloc(void **root, size_t size)
+ {
+     LINK *link;
++    void *block;
+ 
+-    link = alloc(sizeof(LINK));
+-    link->next = *root;
+-    *root = link;
+-    return link->data = alloc(size);
++    block = qalloc_block(root, size);
++    if (block) {
++        return block;
++    } else {
++        link = alloc(sizeof(LINK));
++        link->next = *root;
++        *root = link;
++        return link->data = alloc(size);
++    }   
+ }
+ 
+ 
+@@ -76,6 +125,7 @@
+ 	free(this->data);
+ 	free(this);
+     }
++    qfree_blocks();
+ }
+ 
+ 
+--- dosfstools-2.11/dosfsck/dosfsck.h.orig	2005-03-12 16:23:12.000000000 +0200
++++ dosfstools-2.11/dosfsck/dosfsck.h	2008-02-07 15:51:19.000000000 +0200
+@@ -111,8 +111,8 @@
+ } DOS_FILE;
+ 
+ typedef struct {
+-    unsigned long value;
+-    unsigned long reserved;
++    unsigned int value : 28; /* 12 or 16 bits, 28 bits with FAT32 */
++    unsigned int reserved : 4; /* 4 bits with FAT32, otherwise unused */
+     DOS_FILE *owner;
+     int prev; /* number of previous clusters */
+ } FAT_ENTRY;
+--- dosfstools-2.11/dosfsck/fat.c.orig	2008-02-07 15:43:09.000000000 +0200
++++ dosfstools-2.11/dosfsck/fat.c	2008-02-20 17:44:52.000000000 +0200
+@@ -51,14 +51,13 @@
+ {
+     int eff_size;
+     unsigned long i;
+-    void *first,*second,*use;
++    void *first,*second;
+     int first_ok,second_ok;
+     int msg_to_print = 100, total_msg = 0, msg_printed = 0;
+ 
+     eff_size = ((fs->clusters+2ULL)*fs->fat_bits+7)/8ULL;
+     first = alloc(eff_size);
+     fs_read(fs->fat_start,eff_size,first);
+-    use = first;
+     if (fs->nfats > 1) {
+ 	second = alloc(eff_size);
+ 	fs_read(fs->fat_start+fs->fat_size,eff_size,second);
+@@ -73,24 +72,28 @@
+ 	second_ok = (second_media.value & FAT_EXTD(fs)) == FAT_EXTD(fs);
+ 	if (first_ok && !second_ok) {
+ 	    printf("FATs differ - using first FAT.\n");
+-	    fs_write(fs->fat_start+fs->fat_size,eff_size,use = first);
++	    fs_write(fs->fat_start+fs->fat_size,eff_size,first);
+ 	}
+ 	if (!first_ok && second_ok) {
+ 	    printf("FATs differ - using second FAT.\n");
+-	    fs_write(fs->fat_start,eff_size,use = second);
++	    fs_write(fs->fat_start,eff_size,second);
++	    memcpy(first,second,eff_size);
+ 	}
+ 	if (first_ok && second_ok) {
+ 	    if (interactive) {
+ 		printf("FATs differ but appear to be intact. Use which FAT ?\n"
+ 		  "1) Use first FAT\n2) Use second FAT\n");
+-		if (get_key("12","?") == '1')
+-		    fs_write(fs->fat_start+fs->fat_size,eff_size,use = first);
+-		else fs_write(fs->fat_start,eff_size,use = second);
++		if (get_key("12","?") == '1') {
++		    fs_write(fs->fat_start+fs->fat_size,eff_size,first);
++		} else {
++		    fs_write(fs->fat_start,eff_size,second);
++		    memcpy(first,second,eff_size);
++		}
+ 	    }
+ 	    else {
+ 		printf("FATs differ but appear to be intact. Using first "
+ 		  "FAT.\n");
+-		fs_write(fs->fat_start+fs->fat_size,eff_size,use = first);
++		fs_write(fs->fat_start+fs->fat_size,eff_size,first);
+ 	    }
+ 	}
+ 	if (!first_ok && !second_ok) {
+@@ -98,13 +101,17 @@
+ 	    exit(1);
+ 	}
+     }
++    /* first contains now the valid FAT, so this can be freed */
++    if (second) {
++	free(second);
++    }
+     fs->fat = qalloc(&mem_queue,sizeof(FAT_ENTRY)*(fs->clusters+2ULL));
+-    for (i = 2; i < fs->clusters+2; i++) get_fat(&fs->fat[i],use,i,fs);
++    for (i = 2; i < fs->clusters+2; i++) get_fat(&fs->fat[i],first,i,fs);
+     for (i = 2; i < fs->clusters+2; i++)
+ 	if (fs->fat[i].value >= fs->clusters+2 &&
+ 	    (fs->fat[i].value < FAT_MIN_BAD(fs))) {
+             if (msg_to_print >= msg_printed) {
+-	    printf("Cluster %ld out of range (%ld > %ld). Setting to EOF.\n",
++	    printf("Cluster %ld out of range (%d > %ld). Setting to EOF.\n",
+ 		   i-2,fs->fat[i].value,fs->clusters+2-1);
+             ++msg_printed;
+             }
+@@ -116,8 +123,6 @@
+                total_msg - msg_printed);
+     }
+     free(first);
+-    if (second)
+-	free(second);
+ }
+ 
+ 

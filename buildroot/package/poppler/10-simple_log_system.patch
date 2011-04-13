@@ -1,0 +1,40 @@
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/qt/poppler-page.cc poppler-0.5.1/qt/poppler-page.cc
+--- poppler-0.5.1.orig/qt/poppler-page.cc	2009-03-31 15:48:25.000000000 +0200
++++ poppler-0.5.1/qt/poppler-page.cc	2009-03-31 15:48:25.000000000 +0200
+@@ -92,7 +92,6 @@
+ 
+   img.create(bw, bh, 32, 0, QImage::IgnoreEndian);
+   int rowSize = output_dev->getBitmap()->getRowSize();
+-  //printf("qt rowSize = %i", rowSize);
+ 
+   for (int i = 0; i < bh; i++) {
+       memcpy(img.scanLine(i), color_ptr + i * rowSize, bw * 4);
+@@ -187,12 +186,10 @@
+ 	if (w) *w = bw;
+ 	if (h) *h = bh;
+ 	
+-printf("poppler render: %d\n", fmt);
+ 	switch (fmt)
+ 	{
+ 		case BufferFormatInterleavedRgb:
+ 		{
+-printf("BufferFormatInterleavedRgb: src_lstep: %d, *dst_linestep: %d\n", src_lstep, *dst_linestep);
+ 			unsigned char *ptrR = buffer[0];
+ 			unsigned char *ptrG = buffer[1];
+ 			unsigned char *ptrB = buffer[2];
+@@ -240,7 +237,6 @@
+ 		
+ 		default:
+ 		{
+-printf("BufferFormatNormal\n");
+ 			unsigned char *ptr = *buffer;
+ 	
+ 			for (int i = 0; i < bh; i++) {
+@@ -251,7 +247,6 @@
+ 		}
+ 		
+ 	}
+-printf("poppler render done\n");
+ }
+ 
+ void Page::setupLinks()

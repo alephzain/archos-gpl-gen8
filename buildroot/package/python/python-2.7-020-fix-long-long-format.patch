@@ -1,0 +1,11 @@
+--- Python-2.7.orig/configure	2010-08-20 18:00:56.000000000 +0200
++++ Python-2.7/configure	2010-05-08 13:04:18.000000000 +0200
+@@ -13517,7 +13517,7 @@
+   $as_echo_n "(cached) " >&6
+ else
+   if test "$cross_compiling" = yes; then :
+-  ac_cv_have_long_long_format=no
++  ac_cv_have_long_long_format=yes
+ else
+   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+ /* end confdefs.h.  */

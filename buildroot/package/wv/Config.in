@@ -1,0 +1,7 @@
+config BR2_PACKAGE_WV
+	bool "wv"
+	default n
+	depends on BR2_PACKAGE_LIBGSF
+	help
+		MSWord library can load and parse Word 2000, 97, 95 and 6 file formats
+		http://wvware.sourceforge.net/

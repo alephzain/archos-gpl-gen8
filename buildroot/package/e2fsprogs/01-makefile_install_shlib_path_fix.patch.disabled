@@ -1,0 +1,16 @@
+diff -rU5 e2fsprogs-1.40.9/lib/Makefile.elf-lib e2fsprogs-1.40.9_patch/lib/Makefile.elf-lib
+--- e2fsprogs-1.40.9/lib/Makefile.elf-lib	2008-01-01 22:47:01.000000000 +0100
++++ e2fsprogs-1.40.9_patch/lib/Makefile.elf-lib	2008-05-05 11:28:56.000000000 +0200
+@@ -43,11 +43,11 @@
+ 	@echo "	INSTALL-ELF-LIB $(ELF_INSTALL_DIR)/$(ELF_LIB)"
+ 	@$(INSTALL_PROGRAM) $(ELF_LIB) $(DESTDIR)$(ELF_INSTALL_DIR)/$(ELF_LIB)
+ 	@echo "	SYMLINK $(ELF_INSTALL_DIR)/$(ELF_SONAME)"
+ 	@$(LN_S) -f $(ELF_LIB) $(DESTDIR)$(ELF_INSTALL_DIR)/$(ELF_SONAME)
+ 	@echo "	SYMLINK $(libdir)/$(ELF_IMAGE).so"
+-	@$(LN_S) -f $(ELF_INSTALL_DIR)/$(ELF_SONAME) \
++	@$(LN_S) -f $(ELF_SONAME) \
+ 		$(DESTDIR)$(libdir)/$(ELF_IMAGE).so
+ 	@echo "	LDCONFIG"
+ 	@-$(LDCONFIG)
+ 
+ install-strip: install

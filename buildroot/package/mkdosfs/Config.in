@@ -1,0 +1,29 @@
+config BR2_PACKAGE_DOSFSTOOLS
+	bool "dosfstools"
+	default n
+	help
+	  Utilities to create and check MS-DOS filesystems under Linux
+	  (mkdosfs and dosfsck)
+
+	  ftp://ftp.uni-erlangen.de/pub/Linux/LOCAL/dosfstools/
+
+config BR2_PACKAGE_DOSFSTOOLS_MKDOSFS
+	bool "mkdosfs"
+	default n
+	depends on BR2_PACKAGE_DOSFSTOOLS
+
+config BR2_PACKAGE_DOSFSTOOLS_MKDOSFS_STATIC
+	bool "mkdosfs_static"
+	default n
+	depends on BR2_PACKAGE_DOSFSTOOLS
+
+config BR2_PACKAGE_DOSFSTOOLS_DOSFSCK
+	bool "dosfsck"
+	default n
+	depends on BR2_PACKAGE_DOSFSTOOLS
+
+config BR2_PACKAGE_DOSFSTOOLS_DOSFSCK_STATIC
+	bool "dosfsck_static"
+	default n
+	depends on BR2_PACKAGE_DOSFSTOOLS
+

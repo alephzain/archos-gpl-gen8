@@ -1,0 +1,555 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/Makefile.am fusesmb-0.8.7/Makefile.am
+--- fusesmb-0.8.7.orig/Makefile.am	2005-08-15 22:01:26.000000000 +0200
++++ fusesmb-0.8.7/Makefile.am	2009-04-01 12:32:14.000000000 +0200
+@@ -1,8 +1,8 @@
+ AM_CPPFLAGS=-D_REENTRANT -D_FILE_OFFSET_BITS=64
+ bin_PROGRAMS=fusesmb fusesmb.cache
+-fusesmb_SOURCES=fusesmb.c hash.c smbctx.c stringlist.c configfile.c
+-fusesmb_cache_SOURCES = cache.c hash.c stringlist.c smbctx.c configfile.c
+-noinst_HEADERS = hash.h stringlist.h smbctx.h configfile.h debug.h
++fusesmb_SOURCES=fusesmb.c hash.c smbctx.c stringlist.c configfile.c apopen.c 
++fusesmb_cache_SOURCES = cache.c hash.c stringlist.c smbctx.c configfile.c apopen.c
++noinst_HEADERS = hash.h stringlist.h smbctx.h configfile.h debug.h apopen.h
+ 
+ #  uncomment the following if fusesmb requires the math library
+ 
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/apopen.c fusesmb-0.8.7/apopen.c
+--- fusesmb-0.8.7.orig/apopen.c	1970-01-01 01:00:00.000000000 +0100
++++ fusesmb-0.8.7/apopen.c	2009-04-01 12:32:14.000000000 +0200
+@@ -0,0 +1,183 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <errno.h>
++#include <unistd.h>
++#include <sys/wait.h>
++#include <pthread.h>
++#include <string.h>
++
++#define LOCK_CHILD_LIST		pthread_mutex_lock(&apopen_mutex)
++#define UNLOCK_CHILD_LIST	pthread_mutex_unlock(&apopen_mutex)
++
++pthread_mutex_t apopen_mutex = PTHREAD_MUTEX_INITIALIZER;
++
++// ripped from uclibc popen.c
++struct popen_list_item {
++	struct popen_list_item *next;
++	FILE *f;
++	pid_t pid;
++};
++
++static struct popen_list_item *popen_list /* = NULL (bss initialized) */;
++
++FILE *apopen(const char *command, const char *modes)
++{
++	FILE *fp;
++	struct popen_list_item *pi;
++	struct popen_list_item *po;
++	int pipe_fd[2];
++	int parent_fd;
++	int child_fd;
++	int child_writing;			/* Doubles as the desired child fildes. */
++	pid_t pid;
++
++	child_writing = 0;			/* Assume child is writing. */
++	if (modes[0] != 'w') {			/* Parent not writing... */
++		++child_writing;		/* so child must be writing. */
++		if (modes[0] != 'r') {		/* Oops!  Parent not reading either! */
++			goto RET_NULL;
++		}
++	}
++
++	if (!(pi = malloc(sizeof(struct popen_list_item)))) {
++		goto RET_NULL;
++	}
++
++	if (pipe(pipe_fd)) {
++		goto FREE_PI;
++	}
++
++	child_fd = pipe_fd[child_writing];
++	parent_fd = pipe_fd[1-child_writing];
++
++	if (!(fp = fdopen(parent_fd, modes))) {
++		close(parent_fd);
++		close(child_fd);
++		goto FREE_PI;
++	}
++
++	LOCK_CHILD_LIST;
++	if ((pid = fork()) == 0) {	/* Child of fork... */
++		close(parent_fd);
++		if (child_fd != child_writing) {
++			dup2(child_fd, child_writing);
++			close(child_fd);
++		}
++
++		/* SUSv3 requires that any previously popen()'d streams in the
++		 * parent shall be closed in the child. */
++		for (po = popen_list ; po ; po = po->next) {
++			close(fileno(po->f));
++		}
++		execl("/bin/sh", "sh", "-c", command, (char *)0);
++
++		/* SUSv3 mandates an exit code of 127 for the child if the
++		 * command interpreter can not be invoked. */
++		_exit(127);
++	}
++
++	/* We need to close the child filedes whether fork failed or
++	 * it succeeded and we're in the parent. */
++	close(child_fd);
++
++	if (pid > 0) {				/* Parent of vfork... */
++                printf("putting %i into the child list\n", pid);
++		pi->pid = pid;
++		pi->f = fp;
++		//LOCK;
++		pi->next = popen_list;
++		popen_list = pi;
++		UNLOCK_CHILD_LIST;
++		return fp;
++	}
++        UNLOCK_CHILD_LIST;
++
++	/* If we get here, fork failed. */
++	fclose(fp);					/* Will close parent_fd. */
++
++ FREE_PI:
++	free(pi);
++
++ RET_NULL:
++	return NULL;
++}
++
++int apclose(FILE *stream)
++{
++	struct popen_list_item *p;
++	int stat;
++	pid_t pid;
++
++	/* First, find the list entry corresponding to stream and remove it
++	 * from the list.  Set p to the list item (NULL if not found). */
++	LOCK_CHILD_LIST;
++	if ((p = popen_list) != NULL) {
++		if (p->f == stream) {
++			popen_list = p->next;
++		} else {
++			struct popen_list_item *t;
++			do {
++				t = p;
++				if (!(p = t->next)) {
++					//__set_errno(EINVAL); /* Not required by SUSv3. */
++					break;
++				}
++				if (p->f == stream) {
++					t->next = p->next;
++					break;
++				}
++			} while (1);
++		}
++	}
++	//UNLOCK;
++
++	if (p) {
++		pid = p->pid;			/* Save the pid we need */
++		free(p);				/* and free the list item. */
++
++		fclose(stream);	/* The SUSv3 example code ignores the return. */
++
++		/* SUSv3 specificly requires that pclose not return before the child
++		 * terminates, in order to disallow pclose from returning on EINTR. */
++		do {
++			if (waitpid(pid, &stat, 0) >= 0) {
++				UNLOCK_CHILD_LIST;
++                                printf("removed %i from the child list\n", pid);
++				return stat;
++			}
++			if (errno != EINTR) {
++				break;
++			}
++		} while (1);
++	}
++        UNLOCK_CHILD_LIST;
++        printf("something was wrong\n");
++
++	return -1;
++}
++
++void apopen_shutdown(void)
++{
++    LOCK_CHILD_LIST;
++    // walk the child list and kill'em all!
++    struct popen_list_item *cursor = popen_list;
++    while ( cursor ) {
++        printf("about to kill %i\n", cursor->pid);
++        if ( kill(cursor->pid, SIGKILL) ) {
++            printf("kill(%i, SIGKILL) failed: %s\n", cursor->pid, strerror(errno));
++        }
++        cursor = cursor->next;
++    }
++    printf("all processes got their kill\n");
++
++    // afterwards pick up the remains
++    cursor = popen_list;
++    while ( cursor ) {
++        printf("waiting %i\n", cursor->pid);
++        if ( waitpid(cursor->pid, NULL, 0) == -1 ) {
++            printf("waitpid for %i failed: %s\n", cursor->pid, strerror(errno));
++        }
++        cursor = cursor->next;
++    }
++    UNLOCK_CHILD_LIST;
++}
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/apopen.h fusesmb-0.8.7/apopen.h
+--- fusesmb-0.8.7.orig/apopen.h	1970-01-01 01:00:00.000000000 +0100
++++ fusesmb-0.8.7/apopen.h	2009-04-01 12:32:14.000000000 +0200
+@@ -0,0 +1,9 @@
++#include <stdio.h>
++#include <pthread.h>
++
++#define LOCK_CHILD_LIST		pthread_mutex_lock(&mylock)
++#define UNLOCK_CHILD_LIST	pthread_mutex_unlock(&mylock)
++
++FILE *apopen(const char *command, const char *modes);
++int apclose(FILE *stream);
++void apopen_shutdown(void);
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/cache.c fusesmb-0.8.7/cache.c
+--- fusesmb-0.8.7.orig/cache.c	2009-04-01 12:31:39.000000000 +0200
++++ fusesmb-0.8.7/cache.c	2009-04-01 12:32:14.000000000 +0200
+@@ -33,11 +33,13 @@
+ #include <unistd.h>
+ #include <signal.h>
+ #include <sys/wait.h>
++#include <syslog.h>
+ 
+ #include "stringlist.h"
+ #include "smbctx.h"
+ #include "hash.h"
+ #include "configfile.h"
++#include "apopen.h"
+ #include "debug.h"
+ 
+ #  define index(s,c) strchr((s), (c))
+@@ -48,7 +50,7 @@
+ #define MAX_WGLEN 255
+ 
+ static pthread_t shutdown_thread;
+-static int shutdown_requested = 0;
++static sigset_t blocked;
+ 
+ static pthread_mutex_t startup_mutex;
+ static pthread_cond_t count_cv;
+@@ -57,155 +59,11 @@
+ 
+ static pthread_mutex_t ctx_mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
+-static pthread_mutex_t mylock = PTHREAD_MUTEX_INITIALIZER;
+-#define LOCK_CHILD_LIST		pthread_mutex_lock(&mylock)
+-#define UNLOCK_CHILD_LIST	pthread_mutex_unlock(&mylock)
+-
+-// ripped from uclibc popen.c
+-struct popen_list_item {
+-	struct popen_list_item *next;
+-	FILE *f;
+-	pid_t pid;
+-};
+-
+-static struct popen_list_item *popen_list /* = NULL (bss initialized) */;
+-
+-static FILE *apopen(const char *command, const char *modes)
+-{
+-	FILE *fp;
+-	struct popen_list_item *pi;
+-	struct popen_list_item *po;
+-	int pipe_fd[2];
+-	int parent_fd;
+-	int child_fd;
+-	volatile int child_writing;			/* Doubles as the desired child fildes. */
+-	pid_t pid;
+-
+-	child_writing = 0;			/* Assume child is writing. */
+-	if (modes[0] != 'w') {			/* Parent not writing... */
+-		++child_writing;		/* so child must be writing. */
+-		if (modes[0] != 'r') {		/* Oops!  Parent not reading either! */
+-			goto RET_NULL;
+-		}
+-	}
+-
+-	if (!(pi = malloc(sizeof(struct popen_list_item)))) {
+-		goto RET_NULL;
+-	}
+-
+-	if (pipe(pipe_fd)) {
+-		goto FREE_PI;
+-	}
+-
+-	child_fd = pipe_fd[child_writing];
+-	parent_fd = pipe_fd[1-child_writing];
+-
+-	if (!(fp = fdopen(parent_fd, modes))) {
+-		close(parent_fd);
+-		close(child_fd);
+-		goto FREE_PI;
+-	}
+-
+-	//VFORK_LOCK;
+-	if ((pid = vfork()) == 0) {	/* Child of vfork... */
+-		close(parent_fd);
+-		if (child_fd != child_writing) {
+-			dup2(child_fd, child_writing);
+-			close(child_fd);
+-		}
+-
+-		/* SUSv3 requires that any previously popen()'d streams in the
+-		 * parent shall be closed in the child. */
+-		for (po = popen_list ; po ; po = po->next) {
+-			close(fileno(po->f));
+-		}
+-
+-		execl("/bin/sh", "sh", "-c", command, (char *)0);
+-
+-		/* SUSv3 mandates an exit code of 127 for the child if the
+-		 * command interpreter can not be invoked. */
+-		_exit(127);
+-	}
+-	//VFORK_UNLOCK;
+-
+-	/* We need to close the child filedes whether vfork failed or
+-	 * it succeeded and we're in the parent. */
+-	close(child_fd);
+-
+-	if (pid > 0) {				/* Parent of vfork... */
+-		pi->pid = pid;
+-		pi->f = fp;
+-		//LOCK;
+-		pi->next = popen_list;
+-		popen_list = pi;
+-		//UNLOCK;
+-		
+-		return fp;
+-	}
+-
+-	/* If we get here, vfork failed. */
+-	fclose(fp);					/* Will close parent_fd. */
+-
+- FREE_PI:
+-	free(pi);
+-
+- RET_NULL:
+-	return NULL;
+-}
+-
+-static int apclose(FILE *stream)
+-{
+-	struct popen_list_item *p;
+-	int stat;
+-	pid_t pid;
+-
+-	/* First, find the list entry corresponding to stream and remove it
+-	 * from the list.  Set p to the list item (NULL if not found). */
+-	//LOCK;
+-	if ((p = popen_list) != NULL) {
+-		if (p->f == stream) {
+-			popen_list = p->next;
+-		} else {
+-			struct popen_list_item *t;
+-			do {
+-				t = p;
+-				if (!(p = t->next)) {
+-					//__set_errno(EINVAL); /* Not required by SUSv3. */
+-					break;
+-				}
+-				if (p->f == stream) {
+-					t->next = p->next;
+-					break;
+-				}
+-			} while (1);
+-		}
+-	}
+-	//UNLOCK;
+-
+-	if (p) {
+-		pid = p->pid;			/* Save the pid we need */
+-		free(p);				/* and free the list item. */
+-
+-		fclose(stream);	/* The SUSv3 example code ignores the return. */
+-
+-		/* SUSv3 specificly requires that pclose not return before the child
+-		 * terminates, in order to disallow pclose from returning on EINTR. */
+-		do {
+-			if (waitpid(pid, &stat, 0) >= 0) {
+-				return stat;
+-			}
+-			if (errno != EINTR) {
+-				break;
+-			}
+-		} while (1);
+-	}
+-
+-	return -1;
+-}
+-
+ stringlist_t *cache;
+ pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
++char pidfile[1024];
++
+ struct fusesmb_cache_opt {
+     stringlist_t *ignore_servers;
+     stringlist_t *ignore_workgroups;
+@@ -287,12 +145,8 @@
+     char wg_cmd[512];
+     snprintf(wg_cmd, 512, "nmblookup '%s'", wg);
+ 
+-    if ( shutdown_requested ) {
+-        return -1;
+-    }
+-    LOCK_CHILD_LIST;
++    printf("calling \"%s\"\n", wg_cmd);
+     FILE *pipe = apopen(wg_cmd, "r");
+-    UNLOCK_CHILD_LIST;
+ 
+     if (pipe == NULL)
+         return -1;
+@@ -352,12 +206,8 @@
+     }
+     debug("%s\n", ip_cmd);
+ 
+-    if ( shutdown_requested ) {
+-        return -1;
+-    }
+-    LOCK_CHILD_LIST;
++    printf("calling \"%s\"\n", ip_cmd);
+     pipe = apopen(ip_cmd, "r");
+-    UNLOCK_CHILD_LIST;
+ 
+     if (pipe == NULL)
+     {
+@@ -741,42 +591,36 @@
+ 
+ static void *shutdown_check(void* arg)
+ {
+-    while ( !shutdown_requested ) {
+-        usleep(500000);
++    sigfillset(&blocked);
++    if ( pthread_sigmask(SIG_SETMASK, &blocked, NULL) ) {
++        fprintf(stderr, "sigmask failed: %s\n", strerror(errno));
+     }
+ 
+-    LOCK_CHILD_LIST;
+-    // walk the child list and kill'em all!
+-    struct popen_list_item *cursor = popen_list;
+-    while ( cursor ) {
+-        if (kill(cursor->pid, SIGKILL)) {
+-            //syslog(LOG_DEBUG, "kill(%i, SIGKILL) failed: %s", cursor->pid, strerror(errno));
+-        }
+-        cursor = cursor->next;
++    FILE *fp = fopen(pidfile, "w");
++    if (NULL == fp) {
++        exit(EXIT_FAILURE);
+     }
+-    UNLOCK_CHILD_LIST;
++    fprintf(fp, "%i\n", getpid());
++    fclose(fp);
+ 
+-    return NULL;
+-}
++    int signum;
++    while ( 1 ) {
++        sigwait(&blocked, &signum);
++        fprintf(stderr, "received signal %i\n", signum);
+ 
+-static void shutdown_handler( int sig_id )
+-{
+-    if ( sig_id == SIGUSR1 ) {
+-        shutdown_requested = 1;
++        if ( signum == SIGUSR1 ) {
++            break;
++        }
+     }
++
++    apopen_shutdown();
++    exit(EXIT_FAILURE);
++
++    return NULL;  // keep the compiler happy
+ }
+ 
+ static void install_shutdown_handler(void)
+ {
+-    struct sigaction act;
+-    memset(&act, '\0', sizeof(struct sigaction));
+-    act.sa_handler = shutdown_handler;
+-    sigemptyset(&act.sa_mask);
+-    if ( sigaction( SIGUSR1, &act, NULL ) < 0 ) {
+-        fprintf(stderr, "failed to register the SIGUSR1 handler\n");
+-        exit(EXIT_FAILURE);
+-    }
+-
+     int rc = pthread_create(&shutdown_thread, NULL, shutdown_check, NULL);
+     if ( rc ) {
+         fprintf(stderr, "failed to start the shutdown thread\n");
+@@ -786,7 +630,6 @@
+ 
+ int main(int argc, char *argv[])
+ {
+-    char pidfile[1024];
+ #ifndef ARCHOS
+     snprintf(pidfile, 1024, "%s/.smb/fusesmb.cache.pid", getenv("HOME"));
+ #else
+@@ -849,10 +692,12 @@
+         close(STDERR_FILENO);
+     }
+ 
+-    //install_shutdown_handler();
++    install_shutdown_handler();
+ 
+     SMBCCTX *ctx = fusesmb_cache_new_context(&cfg);
++    openlog("fusesmb.cache", LOG_PID, LOG_USER);
+     cache_servers(ctx);
++    closelog();
+     smbc_free_context(ctx, 1);
+     options_free(&opts);
+     if (argc == 1)
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/smbctx.c fusesmb-0.8.7/smbctx.c
+--- fusesmb-0.8.7.orig/smbctx.c	2009-04-01 12:31:39.000000000 +0200
++++ fusesmb-0.8.7/smbctx.c	2009-04-01 12:32:34.000000000 +0200
+@@ -21,6 +21,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include "smbctx.h"
++#include "apopen.h"
+ #include "debug.h"
+ 
+ #  define index(s,c) strchr((s), (c))
+@@ -29,11 +30,11 @@
+ config_t *fusesmb_auth_fn_cfg = NULL;
+ pthread_mutex_t *fusesmb_auth_fn_cfg_mutex = NULL;
+ 
+-static int nmblookup(const char *ip_server, char *output, size_t outputsize)
++static int nmblookup1(const char *ip_server, char *output, size_t outputsize)
+ {
+     char ipcmd[1024] = "nmblookup -A ";
+     strcat(ipcmd, ip_server);
+-    FILE *pipe = popen(ipcmd, "r");
++    FILE *pipe = apopen(ipcmd, "r");
+     if (NULL == pipe)
+         return -1;
+     while (!feof(pipe))
+@@ -84,7 +85,7 @@
+         }
+ 
+     }
+-    pclose(pipe);
++    apclose(pipe);
+     return 0;
+ }
+ 
+@@ -188,7 +189,7 @@
+     debug("server: %s : share: %s : workgroup: %s", server, share, workgroup);
+ 
+     /* Convert ip to server name */
+-    nmblookup(server, sv, 1024);
++    nmblookup1(server, sv, 1024);
+ 
+     /* Look for username, password for /SERVER/SHARE in the config file */
+     char sv_section[1024] = "/";

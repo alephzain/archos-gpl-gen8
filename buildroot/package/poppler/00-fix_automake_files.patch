@@ -1,0 +1,23 @@
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/glib/reference/Makefile.am poppler-0.5.1/glib/reference/Makefile.am
+--- poppler-0.5.1.orig/glib/reference/Makefile.am	2006-01-03 15:23:31.000000000 +0100
++++ poppler-0.5.1/glib/reference/Makefile.am	2009-04-01 15:26:05.000000000 +0200
+@@ -80,8 +80,8 @@
+ 
+ 
+ # This includes the standard gtk-doc make rules, copied by gtkdocize.
+-include $(top_srcdir)/gtk-doc.make
++#include $(top_srcdir)/gtk-doc.make
+ 
+ # Other files to distribute
+ # e.g. EXTRA_DIST += version.xml.in
+-EXTRA_DIST += 
++#EXTRA_DIST += 
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/utils/Makefile.am poppler-0.5.1/utils/Makefile.am
+--- poppler-0.5.1.orig/utils/Makefile.am	2006-02-28 23:42:12.000000000 +0100
++++ poppler-0.5.1/utils/Makefile.am	2009-04-01 15:26:05.000000000 +0200
+@@ -77,4 +77,4 @@
+ # Yay, automake!  It should be able to figure out that it has to dist
+ # this file, but nooo.  So we just add it here.
+ 
+-EXTRA_DIST = pdftoppm.1
++EXTRA_DIST += pdftoppm.1

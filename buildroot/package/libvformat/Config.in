@@ -1,0 +1,6 @@
+config BR2_PACKAGE_LIBVFORMAT
+	bool "libvformat"
+	default y
+	help
+		Library to parse/write vCard 3.0 (RFC 2425 and 2426)
+		http://sourceforge.net/projects/vformat/

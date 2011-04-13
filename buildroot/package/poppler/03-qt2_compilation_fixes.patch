@@ -1,0 +1,76 @@
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/qt/poppler-document.cc poppler-0.5.1/qt/poppler-document.cc
+--- poppler-0.5.1.orig/qt/poppler-document.cc	2006-01-23 15:43:38.000000000 +0100
++++ poppler-0.5.1/qt/poppler-document.cc	2009-03-31 15:48:24.000000000 +0200
+@@ -135,16 +135,14 @@
+   return true;
+ }
+ 
+-/* borrowed from kpdf */
+ static QString unicodeToQString(Unicode* u, int len) {
+   QString ret;
+-  ret.setLength(len);
+-  QChar* qch = (QChar*) ret.unicode();
+   for (;len;--len)
+-    *qch++ = (QChar) *u++;
++    ret.append((QChar)*u++);
+   return ret;
+ }
+ 
++
+ /* borrowed from kpdf */
+ QString Document::getInfo( const QString & type ) const
+ {
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/qt/poppler-qt.h poppler-0.5.1/qt/poppler-qt.h
+--- poppler-0.5.1.orig/qt/poppler-qt.h	2006-01-06 10:52:46.000000000 +0100
++++ poppler-0.5.1/qt/poppler-qt.h	2009-03-31 15:48:24.000000000 +0200
+@@ -23,9 +23,12 @@
+ #include <qcstring.h>
+ #include <qdatetime.h>
+ #include <qpixmap.h>
++#include <qvaluelist.h>
+ 
+ #include <poppler-page-transition.h>
+ 
++class SplashOutputDev;
++
+ namespace Poppler {
+ 
+ class Document;
+@@ -125,7 +128,10 @@
+   friend class Document;
+   public:
+     ~Page();
+-    void renderToPixmap(QPixmap **q, int x, int y, int w, int h, double xres, double yres) const;
++    void renderToPixmap(QPixmap **q, int x, int y, int w, int h, double xres, double yres);
++    void renderToImageScaled(QImage **q, int hDpi, int vDpi, bool (*abortCheckCbk)(void *data) = 0,
++             void *abortCheckCbkData = 0);
++    void getPagePreview(QImage **q);
+ 
+     /**
+       This is a convenience function that is equivalent to
+@@ -134,7 +140,7 @@
+ 
+       \sa renderToImage()
+      */
+-    void renderToPixmap(QPixmap **q, int x, int y, int w, int h) const;
++    void renderToPixmap(QPixmap **q, int x, int y, int w, int h);
+ 
+     /**
+       \brief Render the page to a QImage using the Splash renderer
+@@ -152,7 +158,7 @@
+ 
+      \sa renderToPixmap()
+     */
+-    QImage renderToImage(double xres = 72.0, double yres = 72.0) const;
++    QImage renderToImage(double xres = 72.0, double yres = 72.0);
+ 
+     /**
+      * Returns the size of the page in points
+@@ -185,6 +191,7 @@
+     Orientation orientation() const;
+     
+   private:
++    SplashOutputDev *output_dev;
+     Page(const Document *doc, int index);
+     PageData *data;
+ };

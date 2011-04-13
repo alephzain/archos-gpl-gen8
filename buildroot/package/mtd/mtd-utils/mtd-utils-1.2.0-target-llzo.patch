@@ -1,0 +1,12 @@
+diff -Nur mtd-utils-1.2.0-orig/Makefile mtd-utils-1.2.0/Makefile
+--- mtd-utils-1.2.0-orig/Makefile	2009-06-15 18:53:47.000000000 +0200
++++ mtd-utils-1.2.0/Makefile	2009-06-15 18:53:57.000000000 +0200
+@@ -65,7 +65,7 @@
+ 			$(BUILDDIR)/compr_lzo.o \
+ 			$(BUILDDIR)/compr.o \
+ 			$(BUILDDIR)/rbtree.o
+-	$(CC) $(LDFLAGS) -o $@ $^ -lz -llzo2
++	$(CC) $(LDFLAGS) -o $@ $^ -lz -llzo
+ 
+ $(BUILDDIR)/flash_eraseall: $(BUILDDIR)/crc32.o $(BUILDDIR)/flash_eraseall.o
+ 	$(CC) $(LDFLAGS) -o $@ $^

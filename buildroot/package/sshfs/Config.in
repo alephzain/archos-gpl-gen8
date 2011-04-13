@@ -1,0 +1,8 @@
+config BR2_PACKAGE_SSHFS
+        bool "sshfs"
+	depends BR2_PACKAGE_FUSE
+	default n
+	help
+		support fuse for a ssh filesystem (http://fuse.sourceforge.net/sshfs.html)
+		Warning ! the fuse module will implicitly build the openssh package.
+			

@@ -1,0 +1,13 @@
+#!/bin/bash
+rm -rf libav
+git clone git://git.libav.org/libav.git
+pushd libav
+git log -1 | grep ^commit | sed -e "s/commit //"
+rev=`git log -1 | grep ^commit | sed -e "s/commit //"`
+popd
+rm -rf libav/.git
+rm -rf libav/.git*
+tar -cvzf libav_$rev.tgz libav
+mv libav_$rev.tgz ../../dl
+rm -rf libav
+echo exported libav git revision $rev

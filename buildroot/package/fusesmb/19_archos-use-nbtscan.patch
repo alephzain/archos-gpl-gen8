@@ -1,0 +1,250 @@
+--- fusesmb-0.8.7/cache.c	2010-11-24 17:26:52.000000000 +0100
++++ fusesmb-0.8.7_finalbeforecleaning/cache.c	2010-11-24 17:23:56.000000000 +0100
+@@ -35,6 +35,8 @@
+ #include <sys/wait.h>
+ #include <syslog.h>
+ #include <dirent.h>
++#include <sys/ioctl.h>
++#include <net/if.h>
+ 
+ #include "stringlist.h"
+ #include "smbctx.h"
+@@ -42,7 +44,9 @@
+ #include "configfile.h"
+ #include "apopen.h"
+ #include "debug.h"
+-
++#include <sys/socket.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
+ #  define index(s,c) strchr((s), (c))
+ #  define rindex(s,c) strrchr((s), (c))
+ 
+@@ -369,7 +373,6 @@
+         DBG syslog(LOG_DEBUG, "sigmask failed: %s", strerror(errno));
+         exit(EXIT_FAILURE);
+     }
+-
+     pthread_t wg_scanner_shutdown_thread;
+     scanner_pid = getpid();
+     int ret = pthread_create(&wg_scanner_shutdown_thread, NULL, wg_scanner, wg);
+@@ -389,6 +392,11 @@
+ {
+ DBG syslog(LOG_DEBUG, "workgroup_listing starting to run");
+     char *wg = (char*)arg;
++    char servername[128];
++    char wgfilename[64];
++    char* ipserver;
++    sprintf(wgfilename,"/tmp/nbtscan/%s.cache",wg);
++    FILE* workgroupfile = fopen(wgfilename,"r");
+ 
+     hash_t *ip_cache = hash_create(HASHCOUNT_T_MAX, NULL, NULL);
+     if (NULL == ip_cache)
+@@ -405,9 +413,8 @@
+     if ( create_tmp_file(&tmp_file, scanner_pid) ) {
+         exit(EXIT_FAILURE);
+     }
+-
+     SMBCCTX *ctx = fusesmb_cache_new_context(&cfg);
+-    SMBCFILE *dir;
++   /* SMBCFILE *dir;
+     char temp_path[MAXPATHLEN] = "smb://";
+     strcat(temp_path, wg);
+ DBG syslog(LOG_DEBUG, "%s: Looking up Workgroup: %s", __FUNCTION__, wg);
+@@ -424,21 +431,38 @@
+     }
+     else {
+ DBG syslog(LOG_DEBUG, "%s: Using the ctx->readdir method for '%s'", __FUNCTION__, wg);
+-        while (NULL != (server_dirent = ctx->readdir(ctx, dir)))
+-        {
+-            if (server_dirent->namelen == 0 ||
+-                server_dirent->smbc_type != SMBC_SERVER)
+-            {
+-                continue;
+-            }
++*/
++    while (NULL != fgets(servername,128,workgroupfile))
++	{
++	    if (strlen(servername) == 0 )
++		{
++		    continue;
++		}else{
++			char *space = strchr(servername, ' ');
++			if (space){
++			ipserver = space+1;
++			*space= 0;
++			}
++
++			char *p = strchr(ipserver, '\n');
++
++			if (p)
++			    {
++				*p = 0;
++			    }
++		}
+ 
+-            if (-1 == sl_add(servers, server_dirent->name, 1))
+-                continue;
+-DBG syslog(LOG_DEBUG, "%s: added server: '%s' to our todo list", __FUNCTION__, server_dirent->name);
++	    if (-1 == sl_add(servers, servername, 1))
++		  continue;
++	    if (NULL == hash_lookup(ip_cache, servername))
++		                  hash_alloc_insert(ip_cache, strdup(servername), strdup(ipserver));
++
++DBG syslog(LOG_DEBUG, "%s: added server: '%s' to our todo list", __FUNCTION__, servername);
+         }
+-        ctx->closedir(ctx, dir);
++        //ctx->closedir(ctx, dir);
++	fclose(workgroupfile);
+ DBG syslog(LOG_DEBUG, "%s ready", __FUNCTION__);
+-    }
++    
+     sl_casesort(servers);
+ 
+     size_t i;
+@@ -582,15 +606,15 @@
+ #endif
+ 
+ 
+-DBG syslog(LOG_DEBUG, "ctx->opendir(ctx, \"smb://\");");
++//DBG syslog(LOG_DEBUG, "ctx->opendir(ctx, \"smb://\");");
+ 
+-    dir = ctx->opendir(ctx, "smb://");
++//    dir = ctx->opendir(ctx, "smb://");
+ 
+-    if (dir == NULL)
+-    {
+-        ctx->closedir(ctx, dir);
+-        return -1;
+-    }
++//    if (dir == NULL)
++//    {
++//        ctx->closedir(ctx, dir);
++//        return -1;
++//    }
+ 
+ DBG syslog(LOG_DEBUG, "ctx->opendir(ctx, \"smb://\"); READY!");
+ 
+@@ -598,21 +622,31 @@
+     if (NULL == processes) {
+         return -1;
+     }
++    char workgroupname[64];
++    FILE* workgroupfile = fopen("/tmp/nbtscan/nbt_group_clean.cache","r");
++    if (workgroupfile==NULL)
++	  return -1;
++    while (NULL != fgets(workgroupname,64,workgroupfile)  )
++    {
++	if (strlen(workgroupname) == 0 )
++	    {
++		continue;
++		DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", (int)pthread_self(), __FUNCTION__, __LINE__);
++	    }else {
++		    char *p = strchr(workgroupname, '\n');
++
++		    if (p)
++			{
++			    *p = 0;
++			}
+ 
+-    while (NULL != (workgroup_dirent = ctx->readdir(ctx, dir)) )
+-    {
+-        if (workgroup_dirent->namelen == 0 ||
+-            workgroup_dirent->smbc_type != SMBC_WORKGROUP)
+-        {
+-            continue;
+-DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", (int)pthread_self(), __FUNCTION__, __LINE__);
+-        }
++	    }
+ 
+         if (opts.ignore_workgroups != NULL)
+         {
+-            if ( NULL != sl_find(opts.ignore_workgroups, workgroup_dirent->name) )
++            if ( NULL != sl_find(opts.ignore_workgroups, workgroupname) )
+             {
+-                debug("Ignoring Workgroup: %s", workgroup_dirent->name);
++                debug("Ignoring Workgroup: %s", workgroupname);
+                 continue;
+ DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", (int)pthread_self(), __FUNCTION__, __LINE__);
+             }
+@@ -629,7 +663,7 @@
+         }
+         else if ( pid == 0 )    // child
+         {
+-            workgroup_listing(workgroup_dirent->name);
++            workgroup_listing(workgroupname);
+         }
+         else                    // parent
+         {
+@@ -644,7 +678,8 @@
+             pthread_mutex_unlock(&processe_ctrl_lock);
+         }
+     }
+-    ctx->closedir(ctx, dir);
++    //ctx->closedir(ctx, dir);
++    fclose(workgroupfile);
+ 
+ DBG syslog(LOG_DEBUG, "we have to wait for %i processes", num_processes);
+ 
+@@ -664,7 +699,6 @@
+         }
+     }
+     free(processes);
+-
+     write_cache_to_disk();
+     return 0;
+ }
+@@ -673,6 +707,7 @@
+ static void* run_scanner_ctrl(void *arg)
+ {
+     (void)arg;
++
+     SMBCCTX *ctx = fusesmb_cache_new_context(&cfg);
+     if ( cache_servers(ctx) == -1 ) {  // empty cache file for the error case/no smb servers.
+     char cachefile[1024];
+@@ -702,6 +737,45 @@
+ int main(int argc, char *argv[])
+ {
+ DBG openlog("fusesmb.cache", LOG_CONS | LOG_PID, LOG_USER);
++struct in_addr theip, themask;
++struct ifreq req;
++int sk;
++sk = socket(PF_INET, SOCK_DGRAM, 0);
++if(sk < 0)
++      return 0;
++memset(&req, 0, sizeof(struct ifreq));
++strncpy(req.ifr_name, "tiwlan0", sizeof(req.ifr_name)-1);
++int reti = ioctl(sk, SIOCGIFADDR, &req);
++if(reti == -1){
++	return -1;
++}else{
++	struct sockaddr_in addr = *(struct sockaddr_in*)&req.ifr_addr;
++	theip = addr.sin_addr;
++}
++
++memset(&req, 0, sizeof(struct ifreq));
++strncpy(req.ifr_name, "tiwlan0", sizeof(req.ifr_name)-1);
++reti = ioctl(sk, SIOCGIFNETMASK, &req);
++if(reti == -1){
++	return -1;
++}else{
++	struct sockaddr_in addr = *(struct sockaddr_in*)&req.ifr_addr;
++	themask = addr.sin_addr;
++}
++
++struct in_addr thesubnet;
++thesubnet.s_addr = theip.s_addr & themask.s_addr ;
++unsigned long int invertedmask = themask.s_addr;
++int compt = 0;
++while (invertedmask & (unsigned long int)1){
++	invertedmask= invertedmask>>1;
++	compt++;
++}
++if (compt<24) compt = 24;
++char nbtscan_command[128];
++sprintf(nbtscan_command,"nbtscan -a %s/%d",inet_ntoa (thesubnet),compt);
++system(nbtscan_command);
++system("cat /tmp/nbtscan/nbt_group.cache | sort | uniq > /tmp/nbtscan/nbt_group_clean.cache");//call nbtscan here
+ 
+ #ifndef ARCHOS
+     snprintf(pidfile, 1024, "%s/.smb/fusesmb.cache.pid", getenv("HOME"));

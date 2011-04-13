@@ -1,0 +1,40 @@
+diff -urN -X /home/marc/dontdiff poppler-0.10.5.orig/qt/poppler-document.cc poppler-0.10.5/qt/poppler-document.cc
+--- poppler-0.10.5.orig/qt/poppler-document.cc	2008-11-05 19:54:02.000000000 +0100
++++ poppler-0.10.5/qt/poppler-document.cc	2009-04-03 11:37:43.000000000 +0200
+@@ -319,7 +319,7 @@
+   PSOutputDev *psOut = new PSOutputDev(file.latin1(), data->doc.getXRef(), data->doc.getCatalog(), NULL, 1, data->doc.getNumPages(), psModePS, paperWidth, paperHeight);
+   
+   if (psOut->isOk()) {
+-    QValueList<int>::iterator it;
++    QValueListIterator<int> it;
+     for (it = pageList.begin(); it != pageList.end(); ++it )
+       data->doc.displayPage(psOut, *it, hDPI, vDPI, rotate, gFalse, gTrue, gTrue);
+     
+diff -urN -X /home/marc/dontdiff poppler-0.10.5.orig/qt/poppler-page.cc poppler-0.10.5/qt/poppler-page.cc
+--- poppler-0.10.5.orig/qt/poppler-page.cc	2009-02-25 19:40:06.000000000 +0100
++++ poppler-0.10.5/qt/poppler-page.cc	2009-04-03 11:37:43.000000000 +0200
+@@ -69,7 +69,8 @@
+ void Page::renderToPixmap(QPixmap **q, int x, int y, int w, int h, double xres, double yres, bool doLinks) const
+ {
+   QImage img = renderToImage(xres, yres, doLinks);
+-  *q = new QPixmap( img );
++  *q = new QPixmap();
++  (*q)->convertFromImage(img, Qt::AutoColor);
+ }
+ 
+ QImage Page::renderToImage(double xres, double yres, bool doLinks) const
+diff -urN -X /home/marc/dontdiff poppler-0.10.5.orig/qt/poppler-private.h poppler-0.10.5/qt/poppler-private.h
+--- poppler-0.10.5.orig/qt/poppler-private.h	2008-10-09 22:30:34.000000000 +0200
++++ poppler-0.10.5/qt/poppler-private.h	2009-04-03 11:37:43.000000000 +0200
+@@ -39,10 +39,8 @@
+ /* borrowed from kpdf */
+ static QString unicodeToQString(Unicode* u, int len) {
+     QString ret;
+-    ret.setLength(len);
+-    QChar* qch = (QChar*) ret.unicode();
+     for (;len;--len)
+-      *qch++ = (QChar) *u++;
++      ret.append((QChar)*u++);
+     return ret;
+ }
+ 

@@ -1,0 +1,48 @@
+--- configure.orig	2006-01-31 17:00:56.000000000 +0100
++++ configure	2006-01-31 17:07:26.000000000 +0100
+@@ -275,6 +275,7 @@
+ ZLIB=yes
+ LIBPNG=yes
+ JPEG=no
++FREETYPELIB=yes
+ MNG=no
+ NAS_SOUND=no
+ XFT=auto
+@@ -379,6 +380,12 @@
+    -system-zlib)
+        ZLIB=no
+ 	;;
++   -qt-freetype)
++       FREETYPELIB=yes
++    ;;
++   -system-freetype)
++       FREETYPELIB=no
++    ;;
+    -qt-libpng)
+        LIBPNG=yes
+ 	;;
+@@ -1272,6 +1279,9 @@
+     -system-libpng ..... Use a libpng from the operating system.
+                          See http://www.libpng.org/pub/png
+ 
++    -qt-freetype........
++ *  -system-freetype.... Use libfreetype from the operating system.
++
+  *  -no-mng ............ Do not compile in MNG I/O support.
+     -system-libmng ..... Use libmng from the operating system.
+                          See http://www.libmng.com
+@@ -1422,7 +1432,13 @@
+ then
+     [ "x$LIBPNG" = "xyes" ] && QT_MODOBJ=$QT_MODOBJ' $(PNG_OBJECTS)'
+     [ "x$ZLIB" = "xyes" ] && QT_MODOBJ=$QT_MODOBJ' $(ZLIB_OBJECTS)'
+-    [ "$FT" = "yes" ] && QT_MODOBJ=$QT_MODOBJ' $(FT_OBJECTS)' && I_FLAGS="$I_FLAGS -I3rdparty/freetype/src -I3rdparty/freetype/include -I3rdparty/freetype/builds/unix"
++	if [ "$FT" = "yes" ]
++	then
++		if [ "$FREETYPELIB" = "no" ]
++		then
++			I_FLAGS="$I_FLAGS -I__TOOLCHAIN__/usr/include/freetype2/ -I__TOOLCHAIN__/usr/include/" l_FLAGS="$l_FLAGS -lfreetype" L_FLAGS="$L_FLAGS -L__TOOLCHAIN__/usr/lib/"
++		fi
++	fi
+ fi
+ chmod +w src/tools/qmodules.h
+ cat >src/tools/qmodules.h << EOF

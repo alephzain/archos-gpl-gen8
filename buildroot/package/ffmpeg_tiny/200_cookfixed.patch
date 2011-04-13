@@ -1,0 +1,2044 @@
+diff -uwbrN ffmpeg_tiny/libavcodec/cook.c ffmpeg_tiny_patched//libavcodec/cook.c
+--- ffmpeg_tiny/libavcodec/cook.c	2010-11-12 12:04:40.000000000 +0100
++++ ffmpeg_tiny_patched//libavcodec/cook.c	2011-01-07 13:01:33.000000000 +0100
+@@ -42,7 +42,9 @@
+  * available.
+  */
+ 
+-#include <math.h>
++#define COOK_FIXPOINT
++
++//#include <math.h>
+ #include <stddef.h>
+ #include <stdio.h>
+ 
+@@ -54,7 +56,12 @@
+ #include "bytestream.h"
+ #include "fft.h"
+ 
+-#include "cookdata.h"
++/* Include cook fixed/floating point types and data */
++#ifdef COOK_FIXPOINT
++#  include "cookdata_fixpoint.h"
++#else
++#  include "cookdata_float.h"
++#endif
+ 
+ /* the different Cook versions */
+ #define MONO            0x1000001
+@@ -101,29 +108,7 @@
+     int                 gain_4[9];
+ } COOKSubpacket;
+ 
+-typedef struct cook {
+-    /*
+-     * The following 5 functions provide the lowlevel arithmetic on
+-     * the internal audio buffers.
+-     */
+-    void (* scalar_dequant)(struct cook *q, int index, int quant_index,
+-                            int* subband_coef_index, int* subband_coef_sign,
+-                            float* mlt_p);
+-
+-    void (* decouple) (struct cook *q,
+-                       COOKSubpacket *p,
+-                       int subband,
+-                       float f1, float f2,
+-                       float *decode_buffer,
+-                       float *mlt_buffer1, float *mlt_buffer2);
+-
+-    void (* imlt_window) (struct cook *q, float *buffer1,
+-                          cook_gains *gains_ptr, float *previous_buffer);
+-
+-    void (* interpolate) (struct cook *q, float* buffer,
+-                          int gain_index, int gain_index_next);
+-
+-    void (* saturate_output) (struct cook *q, int chan, int16_t *out);
++typedef struct {
+ 
+     AVCodecContext*     avctx;
+     GetBitContext       gb;
+@@ -136,33 +121,32 @@
+     /* states */
+     AVLFG               random_state;
+ 
+-    /* transform data */
+-    FFTContext          mdct_ctx;
+-    float*              mlt_window;
+-
+     /* VLC data */
+     VLC                 envelope_quant_index[13];
+     VLC                 sqvh[7];          //scalar quantization
+ 
+-    /* generatable tables and related variables */
+-    int                 gain_size_factor;
+-    float               gain_table[23];
++    /* Variables for fixed/float arithmetic routines */
++    realvars_t          math;
+ 
+     /* data buffers */
+ 
+     uint8_t*            decoded_bytes_buffer;
+-    DECLARE_ALIGNED(16, float,mono_mdct_output)[2048];
+-    float               decode_buffer_1[1024];
+-    float               decode_buffer_2[1024];
+-    float               decode_buffer_0[1060]; /* static allocation for joint decode */
++    DECLARE_ALIGNED(16, REAL_T ,mono_mdct_output[2048]);
++    REAL_T              mono_previous_buffer1[1024];
++    REAL_T              mono_previous_buffer2[1024];
++    REAL_T              decode_buffer_1[1024];
++    REAL_T              decode_buffer_2[1024];
+ 
+-    const float         *cplscales[5];
+     int                 num_subpackets;
+     COOKSubpacket       subpacket[MAX_SUBPACKETS];
+ } COOKContext;
+ 
+-static float     pow2tab[127];
+-static float rootpow2tab[127];
++/* Include fixed/floating point code for COOK decoder */
++#ifdef COOK_FIXPOINT
++#  include "cook_fixpoint.h"
++#else
++#  include "cook_float.h"
++#endif
+ 
+ /* debug functions */
+ 
+@@ -197,27 +181,6 @@
+ #endif
+ 
+ /*************** init functions ***************/
+-
+-/* table generator */
+-static av_cold void init_pow2table(void){
+-    int i;
+-    for (i=-63 ; i<64 ; i++){
+-            pow2tab[63+i]=     pow(2, i);
+-        rootpow2tab[63+i]=sqrt(pow(2, i));
+-    }
+-}
+-
+-/* table generator */
+-static av_cold void init_gain_table(COOKContext *q) {
+-    int i;
+-    q->gain_size_factor = q->samples_per_channel/8;
+-    for (i=0 ; i<23 ; i++) {
+-        q->gain_table[i] = pow(pow2tab[i+52] ,
+-                               (1.0/(double)q->gain_size_factor));
+-    }
+-}
+-
+-
+ static av_cold int init_cook_vlc_tables(COOKContext *q) {
+     int i, result;
+ 
+@@ -247,40 +210,6 @@
+     return result;
+ }
+ 
+-static av_cold int init_cook_mlt(COOKContext *q) {
+-    int j;
+-    int mlt_size = q->samples_per_channel;
+-
+-    if ((q->mlt_window = av_malloc(sizeof(float)*mlt_size)) == 0)
+-      return -1;
+-
+-    /* Initialize the MLT window: simple sine window. */
+-    ff_sine_window_init(q->mlt_window, mlt_size);
+-    for(j=0 ; j<mlt_size ; j++)
+-        q->mlt_window[j] *= sqrt(2.0 / q->samples_per_channel);
+-
+-    /* Initialize the MDCT. */
+-    if (ff_mdct_init(&q->mdct_ctx, av_log2(mlt_size)+1, 1, 1.0)) {
+-      av_free(q->mlt_window);
+-      return -1;
+-    }
+-    av_log(q->avctx,AV_LOG_DEBUG,"MDCT initialized, order = %d.\n",
+-           av_log2(mlt_size)+1);
+-
+-    return 0;
+-}
+-
+-static const float *maybe_reformat_buffer32 (COOKContext *q, const float *ptr, int n)
+-{
+-    if (1)
+-        return ptr;
+-}
+-
+-static av_cold void init_cplscales_table (COOKContext *q) {
+-    int i;
+-    for (i=0;i<5;i++)
+-        q->cplscales[i] = maybe_reformat_buffer32 (q, cplscales[i], (1<<(i+2))-1);
+-}
+ 
+ /*************** init functions end ***********/
+ 
+@@ -340,11 +269,10 @@
+     av_log(avctx,AV_LOG_DEBUG, "Deallocating memory.\n");
+ 
+     /* Free allocated memory buffers. */
+-    av_free(q->mlt_window);
+     av_free(q->decoded_bytes_buffer);
+ 
+-    /* Free the transform. */
+-    ff_mdct_end(&q->mdct_ctx);
++    /* Free fixed/floating point resources. */
++    free_cook_math(q);
+ 
+     /* Free the VLC tables. */
+     for (i=0 ; i<13 ; i++) {
+@@ -395,6 +323,9 @@
+ 
+ static void decode_envelope(COOKContext *q, COOKSubpacket *p, int* quant_index_table) {
+     int i,j, vlc_index;
++    int bitbias;
++ 
++    bitbias = get_bits_count(&q->gb);
+ 
+     quant_index_table[0]= get_bits(&q->gb,6) - 6;       //This is used later in categorize
+ 
+@@ -425,13 +356,15 @@
+ 
+ static void categorize(COOKContext *q, COOKSubpacket *p, int* quant_index_table,
+                        int* category, int* category_index){
+-    int exp_idx, bias, tmpbias1, tmpbias2, bits_left, num_bits, index, v, i, j;
++    int exp_idx, bias, tmpbias, bits_left, num_bits, index, v, i, j;
+     int exp_index2[102];
+     int exp_index1[102];
+ 
+-    int tmp_categorize_array[128*2];
+-    int tmp_categorize_array1_idx=p->numvector_size;
+-    int tmp_categorize_array2_idx=p->numvector_size;
++    int tmp_categorize_array1[128];
++    int tmp_categorize_array1_idx=0;
++    int tmp_categorize_array2[128];
++    int tmp_categorize_array2_idx=0;
++    int category_index_size=0;
+ 
+     bits_left =  p->bits_per_subpacket - get_bits_count(&q->gb);
+ 
+@@ -443,7 +376,8 @@
+ 
+     memset(&exp_index1,0,102*sizeof(int));
+     memset(&exp_index2,0,102*sizeof(int));
+-    memset(&tmp_categorize_array,0,128*2*sizeof(int));
++    memset(&tmp_categorize_array1,0,128*2*sizeof(int));
++    memset(&tmp_categorize_array2,0,128*2*sizeof(int));
+ 
+     bias=-32;
+ 
+@@ -452,6 +386,7 @@
+         num_bits = 0;
+         index = 0;
+         for (j=p->total_subbands ; j>0 ; j--){
++#warning FIXME
+             exp_idx = av_clip((i - quant_index_table[index] + bias) / 2, 0, 7);
+             index++;
+             num_bits+=expbits_tab[exp_idx];
+@@ -469,15 +404,15 @@
+         exp_index1[i] = exp_idx;
+         exp_index2[i] = exp_idx;
+     }
+-    tmpbias1 = tmpbias2 = num_bits;
++    tmpbias = bias = num_bits;
+ 
+     for (j = 1 ; j < p->numvector_size ; j++) {
+-        if (tmpbias1 + tmpbias2 > 2*bits_left) {  /* ---> */
++        if (tmpbias + bias > 2*bits_left) {  /* ---> */
+             int max = -999999;
+             index=-1;
+             for (i=0 ; i<p->total_subbands ; i++){
+                 if (exp_index1[i] < 7) {
+-                    v = (-2*exp_index1[i]) - quant_index_table[i] + bias;
++                    v = (-2*exp_index1[i]) - quant_index_table[i] - 32;
+                     if ( v >= max) {
+                         max = v;
+                         index = i;
+@@ -485,8 +420,8 @@
+                 }
+             }
+             if(index==-1)break;
+-            tmp_categorize_array[tmp_categorize_array1_idx++] = index;
+-            tmpbias1 -= expbits_tab[exp_index1[index]] -
++            tmp_categorize_array1[tmp_categorize_array1_idx++] = index;
++            tmpbias -= expbits_tab[exp_index1[index]] -
+                         expbits_tab[exp_index1[index]+1];
+             ++exp_index1[index];
+         } else {  /* <--- */
+@@ -494,7 +429,7 @@
+             index=-1;
+             for (i=0 ; i<p->total_subbands ; i++){
+                 if(exp_index2[i] > 0){
+-                    v = (-2*exp_index2[i])-quant_index_table[i]+bias;
++                    v = (-2*exp_index2[i])-quant_index_table[i];
+                     if ( v < min) {
+                         min = v;
+                         index = i;
+@@ -502,8 +437,8 @@
+                 }
+             }
+             if(index == -1)break;
+-            tmp_categorize_array[--tmp_categorize_array2_idx] = index;
+-            tmpbias2 -= expbits_tab[exp_index2[index]] -
++            tmp_categorize_array2[tmp_categorize_array2_idx++] = index;
++            tmpbias -= expbits_tab[exp_index2[index]] -
+                         expbits_tab[exp_index2[index]-1];
+             --exp_index2[index];
+         }
+@@ -512,8 +447,17 @@
+     for(i=0 ; i<p->total_subbands ; i++)
+         category[i] = exp_index2[i];
+ 
+-    for(i=0 ; i<p->numvector_size-1 ; i++)
+-        category_index[i] = tmp_categorize_array[tmp_categorize_array2_idx++];
++    /* Concatenate the two arrays. */
++    for(i=tmp_categorize_array2_idx-1 ; i >= 0; i--)
++        category_index[category_index_size++] =  tmp_categorize_array2[i];
++
++    for(i=0;i<tmp_categorize_array1_idx;i++)
++        category_index[category_index_size++ ] =  tmp_categorize_array1[i];
++
++    /* FIXME: mc_sich_ra8_20.rm triggers this, not sure with what we
++       should fill the remaining bytes. */
++    for(i=category_index_size;i<p->numvector_size;i++)
++        category_index[i]=0;
+ 
+ }
+ 
+@@ -535,35 +479,6 @@
+ }
+ 
+ /**
+- * The real requantization of the mltcoefs
+- *
+- * @param q                     pointer to the COOKContext
+- * @param index                 index
+- * @param quant_index           quantisation index
+- * @param subband_coef_index    array of indexes to quant_centroid_tab
+- * @param subband_coef_sign     signs of coefficients
+- * @param mlt_p                 pointer into the mlt buffer
+- */
+-
+-static void scalar_dequant_float(COOKContext *q, int index, int quant_index,
+-                           int* subband_coef_index, int* subband_coef_sign,
+-                           float* mlt_p){
+-    int i;
+-    float f1;
+-
+-    for(i=0 ; i<SUBBAND_SIZE ; i++) {
+-        if (subband_coef_index[i]) {
+-            f1 = quant_centroid_tab[index][subband_coef_index[i]];
+-            if (subband_coef_sign[i]) f1 = -f1;
+-        } else {
+-            /* noise coding if subband_coef_index[i] == 0 */
+-            f1 = dither_tab[index];
+-            if (av_lfg_get(&q->random_state) < 0x80000000) f1 = -f1;
+-        }
+-        mlt_p[i] = f1 * rootpow2tab[quant_index+63];
+-    }
+-}
+-/**
+  * Unpack the subband_coef_index and subband_coef_sign vectors.
+  *
+  * @param q                     pointer to the COOKContext
+@@ -576,11 +491,15 @@
+                        int* subband_coef_sign) {
+     int i,j;
+     int vlc, vd ,tmp, result;
++    int ub;
++    int cb;
+ 
+     vd = vd_tab[category];
+     result = 0;
+     for(i=0 ; i<vpr_tab[category] ; i++){
++        ub = get_bits_count(&q->gb);
+         vlc = get_vlc2(&q->gb, q->sqvh[category].table, q->sqvh[category].bits, 3);
++        cb = get_bits_count(&q->gb);
+         if (p->bits_per_subpacket < get_bits_count(&q->gb)){
+             vlc = 0;
+             result = 1;
+@@ -618,7 +537,7 @@
+ 
+ 
+ static void decode_vectors(COOKContext* q, COOKSubpacket* p, int* category,
+-                           int *quant_index_table, float* mlt_buffer){
++                           int *quant_index_table, REAL_T *mlt_buffer){
+     /* A zero in this table means that the subband coefficient is
+        random noise coded. */
+     int subband_coef_index[SUBBAND_SIZE];
+@@ -640,9 +559,9 @@
+             memset(subband_coef_index, 0, sizeof(subband_coef_index));
+             memset(subband_coef_sign, 0, sizeof(subband_coef_sign));
+         }
+-        q->scalar_dequant(q, index, quant_index_table[band],
++        scalar_dequant_math(q, index, quant_index_table[band],
+                           subband_coef_index, subband_coef_sign,
+-                          &mlt_buffer[band * SUBBAND_SIZE]);
++                            &mlt_buffer[band * 20]);
+     }
+ 
+     if(p->total_subbands*SUBBAND_SIZE >= q->samples_per_channel){
+@@ -655,10 +574,11 @@
+  * function for decoding mono data
+  *
+  * @param q                 pointer to the COOKContext
+- * @param mlt_buffer        pointer to mlt coefficients
++ * @param mlt_buffer1       pointer to left channel mlt coefficients
++ * @param mlt_buffer2       pointer to right channel mlt coefficients
+  */
+ 
+-static void mono_decode(COOKContext *q, COOKSubpacket *p, float* mlt_buffer) {
++static void mono_decode(COOKContext *q, COOKSubpacket *p, REAL_T *mlt_buffer) {
+ 
+     int category_index[128];
+     int quant_index_table[102];
+@@ -674,64 +594,6 @@
+     decode_vectors(q, p, category, quant_index_table, mlt_buffer);
+ }
+ 
+-
+-/**
+- * the actual requantization of the timedomain samples
+- *
+- * @param q                 pointer to the COOKContext
+- * @param buffer            pointer to the timedomain buffer
+- * @param gain_index        index for the block multiplier
+- * @param gain_index_next   index for the next block multiplier
+- */
+-
+-static void interpolate_float(COOKContext *q, float* buffer,
+-                        int gain_index, int gain_index_next){
+-    int i;
+-    float fc1, fc2;
+-    fc1 = pow2tab[gain_index+63];
+-
+-    if(gain_index == gain_index_next){              //static gain
+-        for(i=0 ; i<q->gain_size_factor ; i++){
+-            buffer[i]*=fc1;
+-        }
+-        return;
+-    } else {                                        //smooth gain
+-        fc2 = q->gain_table[11 + (gain_index_next-gain_index)];
+-        for(i=0 ; i<q->gain_size_factor ; i++){
+-            buffer[i]*=fc1;
+-            fc1*=fc2;
+-        }
+-        return;
+-    }
+-}
+-
+-/**
+- * Apply transform window, overlap buffers.
+- *
+- * @param q                 pointer to the COOKContext
+- * @param inbuffer          pointer to the mltcoefficients
+- * @param gains_ptr         current and previous gains
+- * @param previous_buffer   pointer to the previous buffer to be used for overlapping
+- */
+-
+-static void imlt_window_float (COOKContext *q, float *inbuffer,
+-                               cook_gains *gains_ptr, float *previous_buffer)
+-{
+-    const float fc = pow2tab[gains_ptr->previous[0] + 63];
+-    int i;
+-    /* The weird thing here, is that the two halves of the time domain
+-     * buffer are swapped. Also, the newest data, that we save away for
+-     * next frame, has the wrong sign. Hence the subtraction below.
+-     * Almost sounds like a complex conjugate/reverse data/FFT effect.
+-     */
+-
+-    /* Apply window and overlap */
+-    for(i = 0; i < q->samples_per_channel; i++){
+-        inbuffer[i] = inbuffer[i] * fc * q->mlt_window[i] -
+-          previous_buffer[i] * q->mlt_window[q->samples_per_channel - 1 - i];
+-    }
+-}
+-
+ /**
+  * The modulated lapped transform, this takes transform coefficients
+  * and transforms them into timedomain samples.
+@@ -744,22 +606,20 @@
+  * @param previous_buffer   pointer to the previous buffer to be used for overlapping
+  */
+ 
+-static void imlt_gain(COOKContext *q, float *inbuffer,
+-                      cook_gains *gains_ptr, float* previous_buffer)
++static void imlt_gain(COOKContext *q, REAL_T *inbuffer,
++                      cook_gains *gains_ptr, REAL_T *previous_buffer)
+ {
+-    float *buffer0 = q->mono_mdct_output;
+-    float *buffer1 = q->mono_mdct_output + q->samples_per_channel;
++    REAL_T *buffer0 = q->mono_mdct_output;
++    REAL_T *buffer1 = q->mono_mdct_output + q->samples_per_channel;
++    int gain_size_factor = q->samples_per_channel/8;
+     int i;
+ 
+-    /* Inverse modified discrete cosine transform */
+-    ff_imdct_calc(&q->mdct_ctx, q->mono_mdct_output, inbuffer);
+-
+-    q->imlt_window (q, buffer1, gains_ptr, previous_buffer);
++    imlt_math(q, inbuffer, gains_ptr->previous[0], previous_buffer);
+ 
+     /* Apply gain profile */
+     for (i = 0; i < 8; i++) {
+         if (gains_ptr->now[i] || gains_ptr->now[i + 1])
+-            q->interpolate(q, &buffer1[q->gain_size_factor * i],
++            interpolate_math(q, &buffer1[gain_size_factor * i],
+                            gains_ptr->now[i], gains_ptr->now[i + 1]);
+     }
+ 
+@@ -798,32 +658,6 @@
+     return;
+ }
+ 
+-/*
+- * function decouples a pair of signals from a single signal via multiplication.
+- *
+- * @param q                 pointer to the COOKContext
+- * @param subband           index of the current subband
+- * @param f1                multiplier for channel 1 extraction
+- * @param f2                multiplier for channel 2 extraction
+- * @param decode_buffer     input buffer
+- * @param mlt_buffer1       pointer to left channel mlt coefficients
+- * @param mlt_buffer2       pointer to right channel mlt coefficients
+- */
+-static void decouple_float (COOKContext *q,
+-                            COOKSubpacket *p,
+-                            int subband,
+-                            float f1, float f2,
+-                            float *decode_buffer,
+-                            float *mlt_buffer1, float *mlt_buffer2)
+-{
+-    int j, tmp_idx;
+-    for (j=0 ; j<SUBBAND_SIZE ; j++) {
+-        tmp_idx = ((p->js_subband_start + subband)*SUBBAND_SIZE)+j;
+-        mlt_buffer1[SUBBAND_SIZE*subband + j] = f1 * decode_buffer[tmp_idx];
+-        mlt_buffer2[SUBBAND_SIZE*subband + j] = f2 * decode_buffer[tmp_idx];
+-    }
+-}
+-
+ /**
+  * function for decoding joint stereo data
+  *
+@@ -832,21 +666,19 @@
+  * @param mlt_buffer2       pointer to right channel mlt coefficients
+  */
+ 
+-static void joint_decode(COOKContext *q, COOKSubpacket *p, float* mlt_buffer1,
+-                         float* mlt_buffer2) {
++static void joint_decode(COOKContext *q, COOKSubpacket *p, REAL_T *mlt_buffer1,
++                         REAL_T *mlt_buffer2) {
+     int i,j;
+     int decouple_tab[SUBBAND_SIZE];
+-    float *decode_buffer = q->decode_buffer_0;
+-    int idx, cpl_tmp;
+-    float f1,f2;
+-    const float* cplscale;
++    REAL_T decode_buffer[1060];
++    int idx;
+ 
+     memset(decouple_tab, 0, sizeof(decouple_tab));
+     memset(decode_buffer, 0, sizeof(decode_buffer));
+ 
+     /* Make sure the buffers are zeroed out. */
+-    memset(mlt_buffer1,0, 1024*sizeof(float));
+-    memset(mlt_buffer2,0, 1024*sizeof(float));
++    memset(mlt_buffer1,0, 1024*sizeof(REAL_T));
++    memset(mlt_buffer2,0, 1024*sizeof(REAL_T));
+     decouple_info(q, p, decouple_tab);
+     mono_decode(q, p, decode_buffer);
+ 
+@@ -862,13 +694,13 @@
+        the coefficients are stored in a coupling scheme. */
+     idx = (1 << p->js_vlc_bits) - 1;
+     for (i=p->js_subband_start ; i<p->subbands ; i++) {
+-        cpl_tmp = cplband[i];
+-        idx -=decouple_tab[cpl_tmp];
+-        cplscale = q->cplscales[p->js_vlc_bits-2];  //choose decoupler table
+-        f1 = cplscale[decouple_tab[cpl_tmp]];
+-        f2 = cplscale[idx-1];
+-        q->decouple (q, p, i, f1, f2, decode_buffer, mlt_buffer1, mlt_buffer2);
+-        idx = (1 << p->js_vlc_bits) - 1;
++        int i1 = decouple_tab[cplband[i]];
++        int i2 = idx - i1 - 1;
++        for (j=0 ; j<SUBBAND_SIZE ; j++) {
++            REAL_T x = decode_buffer[((p->js_subband_start + i)*20)+j];
++            mlt_buffer1[20*i+j] = cplscale_math(x, p->js_vlc_bits, i1);
++            mlt_buffer2[20*i+j] = cplscale_math(x, p->js_vlc_bits, i2);
++        }
+     }
+ }
+ 
+@@ -898,26 +730,6 @@
+ }
+ 
+  /**
+- * Saturate the output signal to signed 16bit integers.
+- *
+- * @param q                 pointer to the COOKContext
+- * @param chan              channel to saturate
+- * @param out               pointer to the output vector
+- */
+-static void
+-saturate_output_float (COOKContext *q, int chan, int16_t *out)
+-{
+-    int j;
+-    float *output = q->mono_mdct_output + q->samples_per_channel;
+-    /* Clip and convert floats to 16 bits.
+-     */
+-    for (j = 0; j < q->samples_per_channel; j++) {
+-        out[chan + q->nb_channels * j] =
+-          av_clip_int16(lrintf(output[j]));
+-    }
+-}
+-
+-/**
+  * Final part of subpacket decoding:
+  *  Apply modulated lapped transform, gain compensation,
+  *  clip and convert to integer.
+@@ -931,12 +743,12 @@
+  */
+ 
+ static inline void
+-mlt_compensate_output(COOKContext *q, float *decode_buffer,
+-                      cook_gains *gains_ptr, float *previous_buffer,
++mlt_compensate_output(COOKContext *q, REAL_T *decode_buffer,
++                      cook_gains *gains_ptr, REAL_T *previous_buffer,
+                       int16_t *out, int chan)
+ {
+     imlt_gain(q, decode_buffer, gains_ptr, previous_buffer);
+-    q->saturate_output (q, chan, out);
++    output_math(q, out, chan);
+ }
+ 
+ 
+@@ -1229,10 +1041,6 @@
+         }
+     }
+     /* Generate tables */
+-    init_pow2table();
+-    init_gain_table(q);
+-    init_cplscales_table(q);
+-
+     if (init_cook_vlc_tables(q) != 0)
+         return -1;
+ 
+@@ -1250,19 +1058,10 @@
+     if (q->decoded_bytes_buffer == NULL)
+         return -1;
+ 
+-    /* Initialize transform. */
+-    if ( init_cook_mlt(q) != 0 )
++    /* Initialize fixed/floating point routines. */
++    if (init_cook_math(q) != 0)
+         return -1;
+ 
+-    /* Initialize COOK signal arithmetic handling */
+-    if (1) {
+-        q->scalar_dequant  = scalar_dequant_float;
+-        q->decouple        = decouple_float;
+-        q->imlt_window     = imlt_window_float;
+-        q->interpolate     = interpolate_float;
+-        q->saturate_output = saturate_output_float;
+-    }
+-
+     /* Try to catch some obviously faulty streams, othervise it might be exploitable */
+     if ((q->samples_per_channel == 256) || (q->samples_per_channel == 512) || (q->samples_per_channel == 1024)) {
+     } else {
+@@ -1285,7 +1084,11 @@
+ 
+ AVCodec cook_decoder =
+ {
++#ifndef COOK_FIXPOINT
+     .name = "cook",
++#else
++    .name = "cook-fixed",
++#endif
+     .type = AVMEDIA_TYPE_AUDIO,
+     .id = CODEC_ID_COOK,
+     .priv_data_size = sizeof(COOKContext),
+diff -uwbrN ffmpeg_tiny/libavcodec/cookdata_fixpoint.h ffmpeg_tiny_patched//libavcodec/cookdata_fixpoint.h
+--- ffmpeg_tiny/libavcodec/cookdata_fixpoint.h	1970-01-01 01:00:00.000000000 +0100
++++ ffmpeg_tiny_patched//libavcodec/cookdata_fixpoint.h	2011-01-07 12:57:56.000000000 +0100
+@@ -0,0 +1,82 @@
++/*
++ * COOK compatible decoder fixed point data types and constants
++ * Copyright (c) 2007 Ian Braithwaite
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ */
++
++/**
++ * @file cookdata_fixpoint.h
++ * Cook AKA RealAudio G2 compatible decoder
++ * fixed point data types and constants
++ */
++
++#include <stdint.h>
++typedef int32_t FIXP;           /* Fixed point variable type */
++typedef uint16_t FIXPU;         /* Fixed point fraction 0<=x<1 */
++
++typedef FIXP REAL_T;
++
++
++/**
++ * Additional variables in COOKContext
++ * for fixed point routines
++ */
++typedef struct {
++    /* generatable tables */
++    /**
++     * Sine/cosine table.
++     *  x_i = 2^16 sin(i 2pi/8192), 2^16 cos(i 2pi/8192); i=0..1024
++     */
++    FIXPU sincos_lookup[2050];
++} realvars_t;
++
++
++#define cPI1_8 0xec83  /* cos( pi/8) 2^16 */
++#define cPI2_8 0xb505  /* cos(2pi/8) 2^16 */
++#define cPI3_8 0x61f8  /* cos(3pi/8) 2^16 */
++
++
++static const FIXPU pow128_tab[128] = {
++    /* x_i = 2^(15+i/128) */
++    0x8000, 0x80b2, 0x8165, 0x8219, 0x82ce, 0x8383, 0x843a, 0x84f2, 0x85ab,
++    0x8665, 0x871f, 0x87db, 0x8898, 0x8956, 0x8a15, 0x8ad5, 0x8b96, 0x8c58,
++    0x8d1b, 0x8ddf, 0x8ea4, 0x8f6b, 0x9032, 0x90fa, 0x91c4, 0x928e, 0x935a,
++    0x9427, 0x94f5, 0x95c4, 0x9694, 0x9765, 0x9838, 0x990c, 0x99e0, 0x9ab6,
++    0x9b8d, 0x9c65, 0x9d3f, 0x9e19, 0x9ef5, 0x9fd2, 0xa0b0, 0xa190, 0xa270,
++    0xa352, 0xa435, 0xa519, 0xa5ff, 0xa6e6, 0xa7ce, 0xa8b7, 0xa9a1, 0xaa8d,
++    0xab7a, 0xac69, 0xad58, 0xae49, 0xaf3b, 0xb02f, 0xb124, 0xb21a, 0xb312,
++    0xb40b, 0xb505, 0xb601, 0xb6fe, 0xb7fc, 0xb8fc, 0xb9fd, 0xbaff, 0xbc03,
++    0xbd09, 0xbe0f, 0xbf18, 0xc021, 0xc12c, 0xc239, 0xc347, 0xc456, 0xc567,
++    0xc67a, 0xc78d, 0xc8a3, 0xc9ba, 0xcad2, 0xcbec, 0xcd08, 0xce25, 0xcf43,
++    0xd063, 0xd185, 0xd2a8, 0xd3cd, 0xd4f3, 0xd61b, 0xd745, 0xd870, 0xd99d,
++    0xdacc, 0xdbfc, 0xdd2e, 0xde61, 0xdf96, 0xe0cd, 0xe205, 0xe340, 0xe47b,
++    0xe5b9, 0xe6f8, 0xe839, 0xe97c, 0xeac1, 0xec07, 0xed4f, 0xee99, 0xefe5,
++    0xf132, 0xf281, 0xf3d3, 0xf525, 0xf67a, 0xf7d1, 0xf929, 0xfa84, 0xfbe0,
++    0xfd3e, 0xfe9e
++};
++
++
++/* Set up types and include cook data.
++ */ 
++typedef FIXP Q_t[2];
++#define Q(x) {(FIXP)((float)(x) * (1<<28) + 0.5f), \
++              (FIXP)((float)(x) * (1<<28) * 0.707106781187f + 0.5f)}
++typedef FIXPU C_t;
++#define C(x) (FIXPU)((float)(x) * (1<<16) + 0.5f)
++#include "cookdata.h"
+diff -uwbrN ffmpeg_tiny/libavcodec/cookdata_float.h ffmpeg_tiny_patched//libavcodec/cookdata_float.h
+--- ffmpeg_tiny/libavcodec/cookdata_float.h	1970-01-01 01:00:00.000000000 +0100
++++ ffmpeg_tiny_patched//libavcodec/cookdata_float.h	2011-01-07 12:57:56.000000000 +0100
+@@ -0,0 +1,57 @@
++/*
++ * COOK compatible decoder floating point data types and constants
++ * Copyright (c) 2003 Sascha Sommer
++ * Copyright (c) 2005 Benjamin Larsson
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ */
++
++/**
++ * @file cookdata_float.h
++ * Cook AKA RealAudio G2 compatible decoder
++ * floating point data types and constants
++ */
++
++#include <math.h>
++typedef float REAL_T;
++
++
++/**
++ * Additional variables in COOKContext
++ * for floating point routines.
++ */
++typedef struct {
++    /* transform data */
++    MDCTContext         mdct_ctx;
++    DECLARE_ALIGNED_16(FFTSample, mdct_tmp[1024]);  /* temporary storage for imlt */
++    float*              mlt_window;
++
++    /* generatable tables */
++    float               gain_table[23];
++    float               pow2tab[127];
++    float               rootpow2tab[127];
++} realvars_t;
++
++
++/* Set up types and include cook data.
++ */ 
++typedef float Q_t;
++#define Q(x) (x)
++typedef float C_t;
++#define C(x) (x)
++#include "cookdata.h"
+diff -uwbrN ffmpeg_tiny/libavcodec/cookdata.h ffmpeg_tiny_patched//libavcodec/cookdata.h
+--- ffmpeg_tiny/libavcodec/cookdata.h	2010-04-20 16:45:34.000000000 +0200
++++ ffmpeg_tiny_patched//libavcodec/cookdata.h	2011-01-07 12:57:56.000000000 +0100
+@@ -36,18 +36,25 @@
+     52,47,43,37,29,22,16,0,
+ };
+ 
+-static const float dither_tab[8] = {
+-  0.0, 0.0, 0.0, 0.0, 0.0, 0.176777, 0.25, 0.707107,
++static const Q_t dither_tab[8] = {
++    Q(0.0), Q(0.0), Q(0.0), Q(0.0), Q(0.0), Q(0.176777), Q(0.25), Q(0.707107)
+ };
+ 
+-static const float quant_centroid_tab[7][14] = {
+-  { 0.000, 0.392, 0.761, 1.120, 1.477, 1.832, 2.183, 2.541, 2.893, 3.245, 3.598, 3.942, 4.288, 4.724 },
+-  { 0.000, 0.544, 1.060, 1.563, 2.068, 2.571, 3.072, 3.562, 4.070, 4.620, 0.000, 0.000, 0.000, 0.000 },
+-  { 0.000, 0.746, 1.464, 2.180, 2.882, 3.584, 4.316, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 },
+-  { 0.000, 1.006, 2.000, 2.993, 3.985, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 },
+-  { 0.000, 1.321, 2.703, 3.983, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 },
+-  { 0.000, 1.657, 3.491, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 },
+-  { 0.000, 1.964, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 }
++static const Q_t quant_centroid_tab[7][14] = {
++  { Q(0.000), Q(0.392), Q(0.761), Q(1.120), Q(1.477), Q(1.832), Q(2.183),
++    Q(2.541), Q(2.893), Q(3.245), Q(3.598), Q(3.942), Q(4.288), Q(4.724) },
++  { Q(0.000), Q(0.544), Q(1.060), Q(1.563), Q(2.068), Q(2.571), Q(3.072),
++    Q(3.562), Q(4.070), Q(4.620), Q(0.000), Q(0.000), Q(0.000), Q(0.000) },
++  { Q(0.000), Q(0.746), Q(1.464), Q(2.180), Q(2.882), Q(3.584), Q(4.316),
++    Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000) },
++  { Q(0.000), Q(1.006), Q(2.000), Q(2.993), Q(3.985), Q(0.000), Q(0.000),
++    Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000) },
++  { Q(0.000), Q(1.321), Q(2.703), Q(3.983), Q(0.000), Q(0.000), Q(0.000),
++    Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000) },
++  { Q(0.000), Q(1.657), Q(3.491), Q(0.000), Q(0.000), Q(0.000), Q(0.000),
++    Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000) },
++  { Q(0.000), Q(1.964), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000),
++    Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000), Q(0.000) }
+ };
+ 
+ static const int invradix_tab[7] = {
+@@ -510,53 +517,63 @@
+     19,
+ };
+ 
+-static const float cplscale2[3] = {
+-0.953020632266998,0.70710676908493,0.302905440330505,
++static const C_t cplscale2[3] = {
++    C(0.953020632266998), C(0.707106769084930), C(0.302905440330505)
+ };
+ 
+-static const float cplscale3[7] = {
+-0.981279790401459,0.936997592449188,0.875934481620789,0.70710676908493,
+-0.482430040836334,0.349335819482803,0.192587479948997,
+-};
+-
+-static const float cplscale4[15] = {
+-0.991486728191376,0.973249018192291,0.953020632266998,0.930133521556854,
+-0.903453230857849,0.870746195316315,0.826180458068848,0.70710676908493,
+-0.563405573368073,0.491732746362686,0.428686618804932,0.367221474647522,
+-0.302905440330505,0.229752898216248,0.130207896232605,
+-};
+-
+-static const float cplscale5[31] = {
+-0.995926380157471,0.987517595291138,0.978726446628571,0.969505727291107,
+-0.95979779958725,0.949531257152557,0.938616216182709,0.926936149597168,
+-0.914336204528809,0.900602877140045,0.885426938533783,0.868331849575043,
+-0.84851086139679,0.824381768703461,0.791833400726318,0.70710676908493,
+-0.610737144947052,0.566034197807312,0.529177963733673,0.495983630418777,
+-0.464778542518616,0.434642940759659,0.404955863952637,0.375219136476517,
+-0.344963222742081,0.313672333955765,0.280692428350449,0.245068684220314,
+-0.205169528722763,0.157508864998817,0.0901700109243393,
+-};
+-
+-static const float cplscale6[63] = {
+-0.998005926609039,0.993956744670868,0.989822506904602,0.985598564147949,
+-0.981279790401459,0.976860702037811,0.972335040569305,0.967696130275726,
+-0.962936460971832,0.958047747612000,0.953020632266998,0.947844684123993,
+-0.942508161067963,0.936997592449188,0.931297719478607,0.925390899181366,
+-0.919256627559662,0.912870943546295,0.906205296516418,0.899225592613220,
+-0.891890347003937,0.884148240089417,0.875934481620789,0.867165684700012,
+-0.857730865478516,0.847477376461029,0.836184680461884,0.823513329029083,
+-0.808890223503113,0.791194140911102,0.767520070075989,0.707106769084930,
+-0.641024887561798,0.611565053462982,0.587959706783295,0.567296981811523,
+-0.548448026180267,0.530831515789032,0.514098942279816,0.498019754886627,
+-0.482430040836334,0.467206478118896,0.452251672744751,0.437485188245773,
+-0.422837972640991,0.408248275518417,0.393658757209778,0.379014074802399,
+-0.364258885383606,0.349335819482803,0.334183186292648,0.318732559680939,
+-0.302905440330505,0.286608695983887,0.269728302955627,0.252119421958923,
+-0.233590632677078,0.213876649737358,0.192587479948997,0.169101938605309,
+-0.142307326197624,0.109772264957428,0.0631198287010193,
++static const C_t cplscale3[7] = {
++    C(0.981279790401459), C(0.936997592449188), C(0.875934481620789),
++    C(0.707106769084930), C(0.482430040836334), C(0.349335819482803),
++    C(0.192587479948997)
++};
++
++static const C_t cplscale4[15] = {
++    C(0.991486728191376), C(0.973249018192291), C(0.953020632266998),
++    C(0.930133521556854), C(0.903453230857849), C(0.870746195316315),
++    C(0.826180458068848), C(0.707106769084930), C(0.563405573368073),
++    C(0.491732746362686), C(0.428686618804932), C(0.367221474647522),
++    C(0.302905440330505), C(0.229752898216248), C(0.130207896232605)
++};
++
++static const C_t cplscale5[31] = {
++    C(0.995926380157471), C(0.987517595291138), C(0.978726446628571),
++    C(0.969505727291107), C(0.959797799587250), C(0.949531257152557),
++    C(0.938616216182709), C(0.926936149597168), C(0.914336204528809),
++    C(0.900602877140045), C(0.885426938533783), C(0.868331849575043),
++    C(0.848510861396790), C(0.824381768703461), C(0.791833400726318),
++    C(0.707106769084930), C(0.610737144947052), C(0.566034197807312),
++    C(0.529177963733673), C(0.495983630418777), C(0.464778542518616),
++    C(0.434642940759659), C(0.404955863952637), C(0.375219136476517),
++    C(0.344963222742081), C(0.313672333955765), C(0.280692428350449),
++    C(0.245068684220314), C(0.205169528722763), C(0.157508864998817),
++    C(0.0901700109243393)
++};
++
++static const C_t cplscale6[63] = {
++    C(0.998005926609039), C(0.993956744670868), C(0.989822506904602),
++    C(0.985598564147949), C(0.981279790401459), C(0.976860702037811),
++    C(0.972335040569305), C(0.967696130275726), C(0.962936460971832),
++    C(0.958047747612000), C(0.953020632266998), C(0.947844684123993),
++    C(0.942508161067963), C(0.936997592449188), C(0.931297719478607),
++    C(0.925390899181366), C(0.919256627559662), C(0.912870943546295),
++    C(0.906205296516418), C(0.899225592613220), C(0.891890347003937),
++    C(0.884148240089417), C(0.875934481620789), C(0.867165684700012),
++    C(0.857730865478516), C(0.847477376461029), C(0.836184680461884),
++    C(0.823513329029083), C(0.808890223503113), C(0.791194140911102),
++    C(0.767520070075989), C(0.707106769084930), C(0.641024887561798),
++    C(0.611565053462982), C(0.587959706783295), C(0.567296981811523),
++    C(0.548448026180267), C(0.530831515789032), C(0.514098942279816),
++    C(0.498019754886627), C(0.482430040836334), C(0.467206478118896),
++    C(0.452251672744751), C(0.437485188245773), C(0.422837972640991),
++    C(0.408248275518417), C(0.393658757209778), C(0.379014074802399),
++    C(0.364258885383606), C(0.349335819482803), C(0.334183186292648),
++    C(0.318732559680939), C(0.302905440330505), C(0.286608695983887),
++    C(0.269728302955627), C(0.252119421958923), C(0.233590632677078),
++    C(0.213876649737358), C(0.192587479948997), C(0.169101938605309),
++    C(0.142307326197624), C(0.109772264957428), C(0.0631198287010193)
+ };
+ 
+-static const float* const cplscales[5] = {
++static const C_t* cplscales[5] = {
+     cplscale2, cplscale3, cplscale4, cplscale5, cplscale6,
+ };
+ 
+diff -uwbrN ffmpeg_tiny/libavcodec/cook_fixp_mdct.h ffmpeg_tiny_patched//libavcodec/cook_fixp_mdct.h
+--- ffmpeg_tiny/libavcodec/cook_fixp_mdct.h	1970-01-01 01:00:00.000000000 +0100
++++ ffmpeg_tiny_patched//libavcodec/cook_fixp_mdct.h	2011-01-07 12:57:56.000000000 +0100
+@@ -0,0 +1,551 @@
++/*
++ * The following (normalized modified discrete cosine transform)
++ * is taken from the OggVorbis 'TREMOR' source code.
++ *
++ * It has been modified for the ffmpeg cook fixed point decoder.
++ */
++
++/********************************************************************
++ *                                                                  *
++ * THE OggVorbis 'TREMOR' SOURCE CODE IS (C) COPYRIGHT 1994-2002    *
++ * BY THE Xiph.Org FOUNDATION http://www.xiph.org/                  *
++ *                                                                  *
++ ********************************************************************
++
++ Redistribution and use in source and binary forms, with or without
++ modification, are permitted provided that the following conditions
++ are met:
++
++ - Redistributions of source code must retain the above copyright
++ notice, this list of conditions and the following disclaimer.
++
++ - Redistributions in binary form must reproduce the above copyright
++ notice, this list of conditions and the following disclaimer in the
++ documentation and/or other materials provided with the distribution.
++
++ - Neither the name of the Xiph.org Foundation nor the names of its
++ contributors may be used to endorse or promote products derived from
++ this software without specific prior written permission.
++
++ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++ A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION
++ OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++ *********************************************************************
++
++ function: normalized modified discrete cosine transform
++           power of two length transform only [64 <= n ]
++ last mod: $Id: mdct.c 14281 2004-12-30 12:11:32Z henry $
++
++ Original algorithm adapted long ago from _The use of multirate filter
++ banks for coding of high quality digital audio_, by T. Sporer,
++ K. Brandenburg and B. Edler, collection of the European Signal
++ Processing Conference (EUSIPCO), Amsterdam, June 1992, Vol.1, pp
++ 211-214
++
++ The below code implements an algorithm that no longer looks much like
++ that presented in the paper, but the basic structure remains if you
++ dig deep enough to see it.
++
++ This module DOES NOT INCLUDE code to generate/apply the window
++ function.  Everybody has their own weird favorite including me... I
++ happen to like the properties of y=sin(.5PI*sin^2(x)), but others may
++ vehemently disagree.
++
++ ********************************************************************/
++
++#define STIN static inline
++
++typedef int32_t ogg_int32_t;
++
++#define DATA_TYPE ogg_int32_t
++#define REG_TYPE  register ogg_int32_t
++#define LOOKUP_T const uint16_t
++
++static inline ogg_int32_t MULT32(ogg_int32_t x, ogg_int32_t y) {
++  return fixp_mult_pow2(x, y, -1);
++}
++
++static inline ogg_int32_t MULT31(ogg_int32_t x, ogg_int32_t y) {
++  return fixp_mult(x, y);
++}
++
++/*
++ * This should be used as a memory barrier, forcing all cached values in
++ * registers to wr writen back to memory.  Might or might not be beneficial
++ * depending on the architecture and compiler.
++ */
++#define MB()
++
++/*
++ * The XPROD functions are meant to optimize the cross products found all
++ * over the place in mdct.c by forcing memory operation ordering to avoid
++ * unnecessary register reloads as soon as memory is being written to.
++ * However this is only beneficial on CPUs with a sane number of general
++ * purpose registers which exclude the Intel x86.  On Intel, better let the
++ * compiler actually reload registers directly from original memory by using
++ * macros.
++ */
++
++#ifdef __i386__
++
++#define XPROD32(_a, _b, _t, _v, _x, _y)		\
++  { *(_x)=MULT32(_a,_t)+MULT32(_b,_v);		\
++    *(_y)=MULT32(_b,_t)-MULT32(_a,_v); }
++#define XPROD31(_a, _b, _t, _v, _x, _y)		\
++  { *(_x)=MULT31(_a,_t)+MULT31(_b,_v);		\
++    *(_y)=MULT31(_b,_t)-MULT31(_a,_v); }
++#define XNPROD31(_a, _b, _t, _v, _x, _y)	\
++  { *(_x)=MULT31(_a,_t)-MULT31(_b,_v);		\
++    *(_y)=MULT31(_b,_t)+MULT31(_a,_v); }
++
++#else
++
++static inline void XPROD32(ogg_int32_t  a, ogg_int32_t  b,
++			   ogg_int32_t  t, ogg_int32_t  v,
++			   ogg_int32_t *x, ogg_int32_t *y)
++{
++  *x = MULT32(a, t) + MULT32(b, v);
++  *y = MULT32(b, t) - MULT32(a, v);
++}
++
++static inline void XPROD31(ogg_int32_t  a, ogg_int32_t  b,
++			   ogg_int32_t  t, ogg_int32_t  v,
++			   ogg_int32_t *x, ogg_int32_t *y)
++{
++  *x = MULT31(a, t) + MULT31(b, v);
++  *y = MULT31(b, t) - MULT31(a, v);
++}
++
++static inline void XNPROD31(ogg_int32_t  a, ogg_int32_t  b,
++			    ogg_int32_t  t, ogg_int32_t  v,
++			    ogg_int32_t *x, ogg_int32_t *y)
++{
++  *x = MULT31(a, t) - MULT31(b, v);
++  *y = MULT31(b, t) + MULT31(a, v);
++}
++
++#endif
++
++
++/* 8 point butterfly (in place) */
++STIN void mdct_butterfly_8(DATA_TYPE *x){
++
++  REG_TYPE r0   = x[4] + x[0];
++  REG_TYPE r1   = x[4] - x[0];
++  REG_TYPE r2   = x[5] + x[1];
++  REG_TYPE r3   = x[5] - x[1];
++  REG_TYPE r4   = x[6] + x[2];
++  REG_TYPE r5   = x[6] - x[2];
++  REG_TYPE r6   = x[7] + x[3];
++  REG_TYPE r7   = x[7] - x[3];
++
++	   x[0] = r5   + r3;
++	   x[1] = r7   - r1;
++	   x[2] = r5   - r3;
++	   x[3] = r7   + r1;
++           x[4] = r4   - r0;
++	   x[5] = r6   - r2;
++           x[6] = r4   + r0;
++	   x[7] = r6   + r2;
++	   MB();
++}
++
++/* 16 point butterfly (in place, 4 register) */
++STIN void mdct_butterfly_16(DATA_TYPE *x){
++
++  REG_TYPE r0, r1;
++
++	   r0 = x[ 0] - x[ 8]; x[ 8] += x[ 0];
++	   r1 = x[ 1] - x[ 9]; x[ 9] += x[ 1];
++	   x[ 0] = MULT31((r0 + r1) , cPI2_8);
++	   x[ 1] = MULT31((r1 - r0) , cPI2_8);
++	   MB();
++
++	   r0 = x[10] - x[ 2]; x[10] += x[ 2];
++	   r1 = x[ 3] - x[11]; x[11] += x[ 3];
++	   x[ 2] = r1; x[ 3] = r0;
++	   MB();
++
++	   r0 = x[12] - x[ 4]; x[12] += x[ 4];
++	   r1 = x[13] - x[ 5]; x[13] += x[ 5];
++	   x[ 4] = MULT31((r0 - r1) , cPI2_8);
++	   x[ 5] = MULT31((r0 + r1) , cPI2_8);
++	   MB();
++
++	   r0 = x[14] - x[ 6]; x[14] += x[ 6];
++	   r1 = x[15] - x[ 7]; x[15] += x[ 7];
++	   x[ 6] = r0; x[ 7] = r1;
++	   MB();
++
++	   mdct_butterfly_8(x);
++	   mdct_butterfly_8(x+8);
++}
++
++/* 32 point butterfly (in place, 4 register) */
++STIN void mdct_butterfly_32(DATA_TYPE *x){
++
++  REG_TYPE r0, r1;
++
++	   r0 = x[30] - x[14]; x[30] += x[14];           
++	   r1 = x[31] - x[15]; x[31] += x[15];
++	   x[14] = r0; x[15] = r1;
++	   MB();
++
++	   r0 = x[28] - x[12]; x[28] += x[12];           
++	   r1 = x[29] - x[13]; x[29] += x[13];
++	   XNPROD31( r0, r1, cPI1_8, cPI3_8, &x[12], &x[13] );
++	   MB();
++
++	   r0 = x[26] - x[10]; x[26] += x[10];
++	   r1 = x[27] - x[11]; x[27] += x[11];
++	   x[10] = MULT31((r0 - r1) , cPI2_8);
++	   x[11] = MULT31((r0 + r1) , cPI2_8);
++	   MB();
++
++	   r0 = x[24] - x[ 8]; x[24] += x[ 8];
++	   r1 = x[25] - x[ 9]; x[25] += x[ 9];
++	   XNPROD31( r0, r1, cPI3_8, cPI1_8, &x[ 8], &x[ 9] );
++	   MB();
++
++	   r0 = x[22] - x[ 6]; x[22] += x[ 6];
++	   r1 = x[ 7] - x[23]; x[23] += x[ 7];
++	   x[ 6] = r1; x[ 7] = r0;
++	   MB();
++
++	   r0 = x[ 4] - x[20]; x[20] += x[ 4];
++	   r1 = x[ 5] - x[21]; x[21] += x[ 5];
++	   XPROD31 ( r0, r1, cPI3_8, cPI1_8, &x[ 4], &x[ 5] );
++	   MB();
++
++	   r0 = x[ 2] - x[18]; x[18] += x[ 2];
++	   r1 = x[ 3] - x[19]; x[19] += x[ 3];
++	   x[ 2] = MULT31((r1 + r0) , cPI2_8);
++	   x[ 3] = MULT31((r1 - r0) , cPI2_8);
++	   MB();
++
++	   r0 = x[ 0] - x[16]; x[16] += x[ 0];
++	   r1 = x[ 1] - x[17]; x[17] += x[ 1];
++	   XPROD31 ( r0, r1, cPI1_8, cPI3_8, &x[ 0], &x[ 1] );
++	   MB();
++
++	   mdct_butterfly_16(x);
++	   mdct_butterfly_16(x+16);
++}
++
++/* N/stage point generic N stage butterfly (in place, 2 register) */
++STIN void mdct_butterfly_generic
++(DATA_TYPE *x, int points, int step, LOOKUP_T *sincos_lookup){
++
++  LOOKUP_T *T   = sincos_lookup;
++  DATA_TYPE *x1        = x + points      - 8;
++  DATA_TYPE *x2        = x + (points>>1) - 8;
++  REG_TYPE   r0;
++  REG_TYPE   r1;
++
++  //av_log(0, 0, "bfly: points=%d, step=%d\n", points, step);
++
++  do{
++    r0 = x1[6] - x2[6]; x1[6] += x2[6];
++    r1 = x2[7] - x1[7]; x1[7] += x2[7];
++    XPROD31( r1, r0, T[0], T[1], &x2[6], &x2[7] ); T+=step;
++
++    r0 = x1[4] - x2[4]; x1[4] += x2[4];
++    r1 = x2[5] - x1[5]; x1[5] += x2[5];
++    XPROD31( r1, r0, T[0], T[1], &x2[4], &x2[5] ); T+=step;
++
++    r0 = x1[2] - x2[2]; x1[2] += x2[2];
++    r1 = x2[3] - x1[3]; x1[3] += x2[3];
++    XPROD31( r1, r0, T[0], T[1], &x2[2], &x2[3] ); T+=step;
++
++    r0 = x1[0] - x2[0]; x1[0] += x2[0];
++    r1 = x2[1] - x1[1]; x1[1] += x2[1];
++    XPROD31( r1, r0, T[0], T[1], &x2[0], &x2[1] ); T+=step;
++
++    x1-=8; x2-=8;
++  }while(T<sincos_lookup+2048);
++  do{
++    r0 = x1[6] - x2[6]; x1[6] += x2[6];
++    r1 = x1[7] - x2[7]; x1[7] += x2[7];
++    XNPROD31( r0, r1, T[0], T[1], &x2[6], &x2[7] ); T-=step;
++
++    r0 = x1[4] - x2[4]; x1[4] += x2[4];
++    r1 = x1[5] - x2[5]; x1[5] += x2[5];
++    XNPROD31( r0, r1, T[0], T[1], &x2[4], &x2[5] ); T-=step;
++
++    r0 = x1[2] - x2[2]; x1[2] += x2[2];
++    r1 = x1[3] - x2[3]; x1[3] += x2[3];
++    XNPROD31( r0, r1, T[0], T[1], &x2[2], &x2[3] ); T-=step;
++
++    r0 = x1[0] - x2[0]; x1[0] += x2[0];
++    r1 = x1[1] - x2[1]; x1[1] += x2[1];
++    XNPROD31( r0, r1, T[0], T[1], &x2[0], &x2[1] ); T-=step;
++
++    x1-=8; x2-=8;
++  }while(T>sincos_lookup);
++  do{
++    r0 = x2[6] - x1[6]; x1[6] += x2[6];
++    r1 = x2[7] - x1[7]; x1[7] += x2[7];
++    XPROD31( r0, r1, T[0], T[1], &x2[6], &x2[7] ); T+=step;
++
++    r0 = x2[4] - x1[4]; x1[4] += x2[4];
++    r1 = x2[5] - x1[5]; x1[5] += x2[5];
++    XPROD31( r0, r1, T[0], T[1], &x2[4], &x2[5] ); T+=step;
++
++    r0 = x2[2] - x1[2]; x1[2] += x2[2];
++    r1 = x2[3] - x1[3]; x1[3] += x2[3];
++    XPROD31( r0, r1, T[0], T[1], &x2[2], &x2[3] ); T+=step;
++
++    r0 = x2[0] - x1[0]; x1[0] += x2[0];
++    r1 = x2[1] - x1[1]; x1[1] += x2[1];
++    XPROD31( r0, r1, T[0], T[1], &x2[0], &x2[1] ); T+=step;
++
++    x1-=8; x2-=8;
++  }while(T<sincos_lookup+2048);
++  do{
++    r0 = x1[6] - x2[6]; x1[6] += x2[6];
++    r1 = x2[7] - x1[7]; x1[7] += x2[7];
++    XNPROD31( r1, r0, T[0], T[1], &x2[6], &x2[7] ); T-=step;
++
++    r0 = x1[4] - x2[4]; x1[4] += x2[4];
++    r1 = x2[5] - x1[5]; x1[5] += x2[5];
++    XNPROD31( r1, r0, T[0], T[1], &x2[4], &x2[5] ); T-=step;
++
++    r0 = x1[2] - x2[2]; x1[2] += x2[2];
++    r1 = x2[3] - x1[3]; x1[3] += x2[3];
++    XNPROD31( r1, r0, T[0], T[1], &x2[2], &x2[3] ); T-=step;
++
++    r0 = x1[0] - x2[0]; x1[0] += x2[0];
++    r1 = x2[1] - x1[1]; x1[1] += x2[1];
++    XNPROD31( r1, r0, T[0], T[1], &x2[0], &x2[1] ); T-=step;
++
++    x1-=8; x2-=8;
++  }while(T>sincos_lookup);
++}
++
++STIN void mdct_butterflies
++(DATA_TYPE *x,int points,int shift,LOOKUP_T *sincos_lookup){
++
++  int stages=8-shift;
++  int i,j;
++  
++  for(i=0;--stages>0;i++){
++    for(j=0;j<(1<<i);j++)
++      mdct_butterfly_generic(x+(points>>i)*j,points>>i,8<<(i+shift),
++                             sincos_lookup);
++  }
++
++  for(j=0;j<points;j+=32)
++    mdct_butterfly_32(x+j);
++
++}
++
++static unsigned char bitrev[16]={0,8,4,12,2,10,6,14,1,9,5,13,3,11,7,15};
++
++STIN int bitrev12(int x){
++  return bitrev[x>>8]|(bitrev[(x&0x0f0)>>4]<<4)|(((int)bitrev[x&0x00f])<<8);
++}
++
++STIN void mdct_bitreverse
++(DATA_TYPE *x,int n,int step,int shift,LOOKUP_T *sincos_lookup){
++
++  int          bit   = 0;
++  DATA_TYPE   *w0    = x;
++  DATA_TYPE   *w1    = x = w0+(n>>1);
++  LOOKUP_T    *T = sincos_lookup+(step>>1);
++  LOOKUP_T    *Ttop  = T+2048;
++  DATA_TYPE    r2;
++
++  //av_log(0, 0, "brev: shift=%d, step=%d\n", shift, step);
++
++  do{
++    DATA_TYPE r3     = bitrev12(bit++);
++    DATA_TYPE *x0    = x + ((r3 ^ 0xfff)>>shift) -1;
++    DATA_TYPE *x1    = x + (r3>>shift);
++
++    REG_TYPE  r0     = x0[0]  + x1[0];
++    REG_TYPE  r1     = x1[1]  - x0[1];
++
++	      XPROD32( r0, r1, T[1], T[0], &r2, &r3 ); T+=step;
++
++	      w1    -= 4;
++
++	      r0     = (x0[1] + x1[1])>>1;
++              r1     = (x0[0] - x1[0])>>1;
++	      w0[0]  = r0     + r2;
++	      w0[1]  = r1     + r3;
++	      w1[2]  = r0     - r2;
++	      w1[3]  = r3     - r1;
++
++	      r3     = bitrev12(bit++);
++              x0     = x + ((r3 ^ 0xfff)>>shift) -1;
++              x1     = x + (r3>>shift);
++
++              r0     = x0[0]  + x1[0];
++              r1     = x1[1]  - x0[1];
++
++	      XPROD32( r0, r1, T[1], T[0], &r2, &r3 ); T+=step;
++
++              r0     = (x0[1] + x1[1])>>1;
++              r1     = (x0[0] - x1[0])>>1;
++	      w0[2]  = r0     + r2;
++	      w0[3]  = r1     + r3;
++	      w1[0]  = r0     - r2;
++	      w1[1]  = r3     - r1;
++
++	      w0    += 4;
++  }while(T<Ttop);
++  do{
++    DATA_TYPE r3     = bitrev12(bit++);
++    DATA_TYPE *x0    = x + ((r3 ^ 0xfff)>>shift) -1;
++    DATA_TYPE *x1    = x + (r3>>shift);
++
++    REG_TYPE  r0     = x0[0]  + x1[0];
++    REG_TYPE  r1     = x1[1]  - x0[1];
++
++	      T-=step; XPROD32( r0, r1, T[0], T[1], &r2, &r3 );
++
++	      w1    -= 4;
++
++	      r0     = (x0[1] + x1[1])>>1;
++              r1     = (x0[0] - x1[0])>>1;
++	      w0[0]  = r0     + r2;
++	      w0[1]  = r1     + r3;
++	      w1[2]  = r0     - r2;
++	      w1[3]  = r3     - r1;
++
++	      r3     = bitrev12(bit++);
++              x0     = x + ((r3 ^ 0xfff)>>shift) -1;
++              x1     = x + (r3>>shift);
++
++              r0     = x0[0]  + x1[0];
++              r1     = x1[1]  - x0[1];
++
++	      T-=step; XPROD32( r0, r1, T[0], T[1], &r2, &r3 );
++
++              r0     = (x0[1] + x1[1])>>1;
++              r1     = (x0[0] - x1[0])>>1;
++	      w0[2]  = r0     + r2;
++	      w0[3]  = r1     + r3;
++	      w1[0]  = r0     - r2;
++	      w1[1]  = r3     - r1;
++
++	      w0    += 4;
++  }while(w0<w1);
++}
++
++STIN void cook_mdct_backward
++(int n, DATA_TYPE *in, DATA_TYPE *out, LOOKUP_T *sincos_lookup){
++
++  int n2=n>>1;
++  int n4=n>>2;
++  DATA_TYPE *iX;
++  DATA_TYPE *oX;
++  LOOKUP_T *T;
++  int shift;
++  int step;
++
++  for (shift=6;!(n&(1<<shift));shift++);
++
++  shift=13-shift;
++  step=4<<shift;
++  //step=16;
++  //av_log(0, 0, "mdct: shift=%d, step=%d\n", shift, step);
++   
++  /* rotate */
++
++  iX            = in+n2-7;
++  oX            = out+n2+n4;
++  T             = sincos_lookup;
++
++  do{
++    oX-=4;
++    XPROD31( iX[4], iX[6], T[0], T[1], &oX[2], &oX[3] ); T+=step;
++    XPROD31( iX[0], iX[2], T[0], T[1], &oX[0], &oX[1] ); T+=step;
++    iX-=8;
++  }while(iX>=in+n4);
++  do{
++    oX-=4;
++    XPROD31( iX[4], iX[6], T[1], T[0], &oX[2], &oX[3] ); T-=step;
++    XPROD31( iX[0], iX[2], T[1], T[0], &oX[0], &oX[1] ); T-=step;
++    iX-=8;
++  }while(iX>=in);
++
++  iX            = in+n2-8;
++  oX            = out+n2+n4;
++  T             = sincos_lookup;
++
++  do{
++    T+=step; XNPROD31( iX[6], iX[4], T[0], T[1], &oX[0], &oX[1] );
++    T+=step; XNPROD31( iX[2], iX[0], T[0], T[1], &oX[2], &oX[3] );
++    iX-=8;
++    oX+=4;
++  }while(iX>=in+n4);
++  do{
++    T-=step; XNPROD31( iX[6], iX[4], T[1], T[0], &oX[0], &oX[1] );
++    T-=step; XNPROD31( iX[2], iX[0], T[1], T[0], &oX[2], &oX[3] );
++    iX-=8;
++    oX+=4;
++  }while(iX>=in);
++
++  mdct_butterflies(out+n2,n2,shift,sincos_lookup);
++  mdct_bitreverse(out,n,step,shift,sincos_lookup);
++
++  /* rotate */
++
++  step>>=2;
++  //step=4;
++  {
++    DATA_TYPE *oX1=out+n2+n4;
++    DATA_TYPE *oX2=out+n2+n4;
++    DATA_TYPE *iX =out;
++
++    T=sincos_lookup+(step>>1);
++    do{
++      oX1-=4;
++      XPROD31( iX[0], -iX[1], T[0], T[1], &oX1[3], &oX2[0] ); T+=step;
++      XPROD31( iX[2], -iX[3], T[0], T[1], &oX1[2], &oX2[1] ); T+=step;
++      XPROD31( iX[4], -iX[5], T[0], T[1], &oX1[1], &oX2[2] ); T+=step;
++      XPROD31( iX[6], -iX[7], T[0], T[1], &oX1[0], &oX2[3] ); T+=step;
++      oX2+=4;
++      iX+=8;
++    }while(iX<oX1);
++
++    iX=out+n2+n4;
++    oX1=out+n4;
++    oX2=oX1;
++
++    do{
++      oX1-=4;
++      iX-=4;
++
++      oX2[0] = -(oX1[3] = iX[3]);
++      oX2[1] = -(oX1[2] = iX[2]);
++      oX2[2] = -(oX1[1] = iX[1]);
++      oX2[3] = -(oX1[0] = iX[0]);
++
++      oX2+=4;
++    }while(oX2<iX);
++
++    iX=out+n2+n4;
++    oX1=out+n2+n4;
++    oX2=out+n2;
++
++    do{
++      oX1-=4;
++      oX1[0]= iX[3];
++      oX1[1]= iX[2];
++      oX1[2]= iX[1];
++      oX1[3]= iX[0];
++      iX+=4;
++    }while(oX1>oX2);
++  }
++}
+diff -uwbrN ffmpeg_tiny/libavcodec/cook_fixpoint.h ffmpeg_tiny_patched//libavcodec/cook_fixpoint.h
+--- ffmpeg_tiny/libavcodec/cook_fixpoint.h	1970-01-01 01:00:00.000000000 +0100
++++ ffmpeg_tiny_patched//libavcodec/cook_fixpoint.h	2011-01-07 12:57:56.000000000 +0100
+@@ -0,0 +1,301 @@
++/*
++ * COOK compatible decoder, fixed point implementation.
++ * Copyright (c) 2007 Ian Braithwaite
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ */
++
++/**
++ * @file cook_fixpoint.h
++ *
++ * Cook AKA RealAudio G2 fixed point functions.
++ *
++ * Fixed point values are represented as 32 bit signed integers,
++ * which can be added and subtracted directly in C (without checks for
++ * overflow/saturation.
++ *
++ * Three multiplication routines are provided:
++ * 1) Multiplication by powers of two (2^-31 .. 2^31), implemented
++ *    with C's bit shift operations.
++ * 2) Multiplication by 16 bit fractions (0 <= x < 1), implemented
++ *    in C using two 16x16->32 bit integer multiplications.
++ * 3) A combination of the two above. 
++ */
++
++
++/**
++ * Fixed point shift right with rounding.
++ *
++ * @param x                     fix point value
++ * @param i                     shift, 1..31
++ */
++static inline FIXP fixp_shr(FIXP x, int i)
++{
++    return (x + (1 << (i-1))) >> i;
++}
++
++/**
++ * Fixed point multiply by power of two.
++ *
++ * @param x                     fix point value
++ * @param i                     integer power-of-two, -31..+31
++ */
++static inline FIXP fixp_pow2(FIXP x, int i)
++{
++    if (i < 0)
++        return fixp_shr(x, -i);
++    else
++        return x << i;          /* no check for overflow */
++}
++
++/**
++ * Combined fixed point multiply by fraction and power of two.
++ *
++ * @param a                     fix point value
++ * @param b                     fix point fraction, 0 <= b < 1
++ * @param i                     integer power-of-two, -31..+15
++ */
++static inline FIXP fixp_mult_pow2(FIXP a, FIXPU b, int i)
++{
++#define COOK_MUL_16_32
++
++#ifdef COOK_MUL_16_32
++
++    int32_t hb = (a >> 16) * b;
++    uint32_t lb = (a & 0xffffUL) * b;
++
++    if (i < 0)
++        return (hb + (int32_t)(lb >> 16) + (1 << (-1-i))) >> -i;
++    else
++        /* no check for overflow */
++        return (hb << i) + (int32_t)((lb + (1 << (15-i))) >> (16-i));
++#else
++#ifdef COOK_MUL_32_64
++
++    int32_t bs = b;
++    int64_t ab = (int64_t) a * bs;
++
++#else
++    int64_t ab = (int64_t) a * b;
++
++#endif
++
++    return (ab + (1 << (15-i))) >> (16-i);  /* no check for overflow */
++#endif
++}
++
++/**
++ * Fixed point multiply by fraction.
++ *
++ * @param a                     fix point value
++ * @param b                     fix point fraction, 0 <= b < 1
++ */
++static inline FIXP fixp_mult(FIXP a, FIXPU b)
++{
++    return fixp_mult_pow2(a, b, 0);
++}
++
++/**
++ * Initialise fixed point implementation.
++ * Fill in the sine/cosine table.
++ *
++ * @param q                     pointer to the COOKContext
++ */
++static inline int init_cook_math(COOKContext *q)
++{
++    FIXPU *const sincos_lookup = q->math.sincos_lookup;
++    FIXP s = 0, c = 0x80000000; /* 0.0, -1.0 */
++    uint16_t a = 0xc910;        /* 2^14 pi */
++    int i = 0;
++
++    sincos_lookup[i++] = 0x0000;
++    sincos_lookup[i++] = 0xffff;
++
++    while (i < 2050) {
++        FIXP s2 = s + fixp_mult_pow2(c - fixp_mult_pow2(s, a, -11), a, -10);
++        FIXP c2 = c - fixp_mult_pow2(s + fixp_mult_pow2(c, a, -11), a, -10);
++
++        s = s2;
++        c = c2;
++
++        sincos_lookup[i++] = -fixp_shr(s, 15);
++        sincos_lookup[i++] = FFMIN(-fixp_shr(c, 15), 0xffff);
++    }
++
++    return 0;
++}
++
++/**
++ * Free resources used by floating point implementation.
++ * Nothing to do for fixed point.
++ *
++ * @param q                     pointer to the COOKContext
++ */
++static inline void free_cook_math(COOKContext *q)
++{
++    return;
++}
++
++
++/**
++ * The real requantization of the mltcoefs
++ *
++ * @param q                     pointer to the COOKContext
++ * @param index                 index
++ * @param quant_index           quantisation index
++ * @param subband_coef_index    array of indexes to quant_centroid_tab
++ * @param subband_coef_sign     signs of coefficients
++ * @param mlt_p                 pointer into the mlt buffer
++ */
++static void scalar_dequant_math(COOKContext *q, int index, int quant_index,
++                                int* subband_coef_index,
++                                int* subband_coef_sign, FIXP *mlt_p)
++{
++    /* Num. half bits to right shift */
++    const int s = 33 - quant_index + av_log2(q->samples_per_channel);
++    FIXP f1;
++    int i;
++
++    if (s >= 64) {
++        memset(mlt_p, 0, sizeof(FIXP) * SUBBAND_SIZE);
++        return;
++    }
++
++    for(i=0 ; i<SUBBAND_SIZE ; i++) {
++        if (subband_coef_index[i]) {
++            f1 = quant_centroid_tab[index][subband_coef_index[i]][s&1];
++            if (subband_coef_sign[i]) f1 = -f1;
++        } else {
++            /* noise coding if subband_coef_index[i] == 0 */
++            f1 = dither_tab[index][s&1];
++            if (av_lfg_get(&q->random_state) < 0x80000000) f1 = -f1;
++        }
++        mlt_p[i] = fixp_shr(f1, s/2);
++    }
++}
++
++
++/**
++ * the actual requantization of the timedomain samples
++ *
++ * @param q                 pointer to the COOKContext
++ * @param buffer            pointer to the timedomain buffer
++ * @param gain_index        index for the block multiplier
++ * @param gain_index_next   index for the next block multiplier
++ */
++static inline void interpolate_math(COOKContext *q, FIXP* buffer,
++                                    int gain_index, int gain_index_next)
++{
++    int gain_size_factor = q->samples_per_channel/8;
++    int i;
++
++    if(gain_index == gain_index_next){              //static gain
++        for(i = 0; i < gain_size_factor; i++) {
++            buffer[i] = fixp_pow2(buffer[i], gain_index);
++        }
++    } else {                                        //smooth gain
++        int step = (gain_index_next - gain_index)
++                   << (7 - av_log2(gain_size_factor));
++        int x = 0;
++
++        for(i = 0; i < gain_size_factor; i++) {
++            buffer[i] = fixp_mult_pow2(buffer[i], pow128_tab[x], gain_index+1);
++            x += step;
++            gain_index += x >> 7;
++            x = x & 0x7f;
++        }
++    }
++}
++
++
++/* Include fixed point modified discrete cosine transform */
++#include "cook_fixp_mdct.h"
++
++/**
++ * The modulated lapped transform, this takes transform coefficients
++ * and transforms them into timedomain samples.
++ * Applies transform window and overlaps buffers.
++ *
++ * @param q                 pointer to the COOKContext
++ * @param inbuffer          pointer to the mltcoefficients
++ * @param gain0             gain difference now/previous buffers
++ * @param previous_buffer   pointer to the previous buffer to be used for overlapping
++ */
++static void imlt_math(COOKContext *q, FIXP *inbuffer,
++                      int gain0, FIXP *previous_buffer)
++{
++    const FIXPU *sincos_lookup = q->math.sincos_lookup;
++    const int n = q->samples_per_channel;
++    const int step = 4 << (10 - av_log2(n));
++    FIXP *buffer1 = q->mono_mdct_output + n;
++    int i = 0, j = step>>1;
++
++    cook_mdct_backward(2 * n, inbuffer, q->mono_mdct_output,
++                       q->math.sincos_lookup);
++
++    /* Apply window and overlap */
++    do {
++        buffer1[i] =
++          fixp_mult_pow2(buffer1[i], sincos_lookup[j], gain0) -
++          fixp_mult(previous_buffer[i], sincos_lookup[j+1]);
++        j += step;
++    } while (++i < n/2);
++    do {
++        j -= step;
++        buffer1[i] =
++          fixp_mult_pow2(buffer1[i], sincos_lookup[j+1], gain0) -
++          fixp_mult(previous_buffer[i], sincos_lookup[j]);
++    } while (++i < n);
++}
++
++
++/**
++ * Decoupling calculation for joint stereo coefficients.
++ *
++ * @param x                 mono coefficient
++ * @param table             number of decoupling table
++ * @param i                 table index
++ */
++static inline FIXP cplscale_math(FIXP x, int table, int i)
++{
++  return fixp_mult(x, cplscales[table-2][i]);
++}
++
++
++/**
++ * Final converion from floating point values to
++ * signed, 16 bit sound samples. Round and clip.
++ *
++ * @param q                 pointer to the COOKContext
++ * @param out               pointer to the output buffer
++ * @param chan              0: left or single channel, 1: right channel
++ */
++static inline void output_math(COOKContext *q, int16_t *out, int chan)
++{
++    FIXP *output = q->mono_mdct_output + q->samples_per_channel;
++    int j;
++
++    for (j = 0; j < q->samples_per_channel; j++) {
++        FIXP v = fixp_shr(output[j], 11);
++
++        if ((uint32_t) v + 0x8000 > 0xffff)
++            v = (v >> 31) ^ 0x7fff;
++
++        out[chan + q->nb_channels * j] = v;
++    }
++}
+diff -uwbrN ffmpeg_tiny/libavcodec/cook_float.h ffmpeg_tiny_patched//libavcodec/cook_float.h
+--- ffmpeg_tiny/libavcodec/cook_float.h	1970-01-01 01:00:00.000000000 +0100
++++ ffmpeg_tiny_patched//libavcodec/cook_float.h	2011-01-07 12:57:56.000000000 +0100
+@@ -0,0 +1,228 @@
++/*
++ * COOK compatible decoder, floating point implementation.
++ * Copyright (c) 2003 Sascha Sommer
++ * Copyright (c) 2005 Benjamin Larsson
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ */
++
++/**
++ * @file cook_float.h
++ *
++ * Cook AKA RealAudio G2 floating point functions.
++ */
++
++
++/**
++ * Initialise floating point implementation:
++ * lookup tables, mdct and associated window.
++ *
++ * @param q                     pointer to the COOKContext
++ */
++static inline int init_cook_math(COOKContext *q)
++{
++    int gain_size_factor = q->samples_per_channel/8;
++    int mlt_size = q->samples_per_channel;
++    int i;
++    float alpha;
++
++    /* Table of pow(2, [-63:63]) */
++    q->math.pow2tab[63] = 1.0;
++    for (i=1 ; i<64 ; i++){
++        q->math.pow2tab[63+i]=(float)((uint64_t)1<<i);
++        q->math.pow2tab[63-i]=1.0/(float)((uint64_t)1<<i);
++    }
++
++    /* Table of pow(2, [-63..63]/2) */
++    q->math.rootpow2tab[63] = 1.0;
++    for (i=1 ; i<64 ; i++){
++        q->math.rootpow2tab[63+i]=sqrt((float)((uint64_t)1<<i));
++        q->math.rootpow2tab[63-i]=sqrt(1.0/(float)((uint64_t)1<<i));
++    }
++
++    /* Table of pow(2, [-11..11]/(samples_per_channel/8)) */
++    for (i=0 ; i<23 ; i++) {
++        q->math.gain_table[i] = pow((double)q->math.pow2tab[i+52],
++                                    1.0/(double)gain_size_factor);
++    }
++
++    /* Initialize the MLT window: simple sine window. */
++    if ((q->math.mlt_window = av_malloc(sizeof(float)*mlt_size)) == 0)
++        return -1;
++
++    alpha = M_PI / (2.0 * (float)mlt_size);
++    for(i=0 ; i<mlt_size ; i++) {
++        q->math.mlt_window[i] =
++          sin((i + 0.5) * alpha) * sqrt(2.0 / q->samples_per_channel);
++    }
++
++    /* Initialize the MDCT. */
++    if (ff_mdct_init(&q->math.mdct_ctx, av_log2(mlt_size)+1, 1)) {
++        av_free(q->math.mlt_window);
++        return -1;
++    }
++    av_log(NULL,AV_LOG_DEBUG,"MDCT initialized, order = %d.\n",
++           av_log2(mlt_size)+1);
++
++    return 0;
++}
++
++
++/**
++ * Free resources used by floating point implementation.
++ *
++ * @param q                     pointer to the COOKContext
++ */
++static inline void free_cook_math(COOKContext *q)
++{
++    /* Free allocated memory buffers. */
++    av_free(q->math.mlt_window);
++    /* Free the transform. */
++    ff_mdct_end(&q->math.mdct_ctx);
++}
++
++
++/**
++ * The real requantization of the mltcoefs
++ *
++ * @param q                     pointer to the COOKContext
++ * @param index                 index
++ * @param quant_index           quantisation index
++ * @param subband_coef_index    array of indexes to quant_centroid_tab
++ * @param subband_coef_sign     signs of coefficients
++ * @param mlt_p                 pointer into the mlt buffer
++ */
++static void scalar_dequant_math(COOKContext *q, int index, int quant_index,
++                                int* subband_coef_index,
++                                int* subband_coef_sign, float* mlt_p){
++    int i;
++    float f1;
++
++    for(i=0 ; i<SUBBAND_SIZE ; i++) {
++        if (subband_coef_index[i]) {
++            f1 = quant_centroid_tab[index][subband_coef_index[i]];
++            if (subband_coef_sign[i]) f1 = -f1;
++        } else {
++            /* noise coding if subband_coef_index[i] == 0 */
++            f1 = dither_tab[index];
++            if (av_random(&q->random_state) < 0x80000000) f1 = -f1;
++        }
++        mlt_p[i] = f1 * q->math.rootpow2tab[quant_index+63];
++    }
++}
++
++
++/**
++ * the actual requantization of the timedomain samples
++ *
++ * @param q                 pointer to the COOKContext
++ * @param buffer            pointer to the timedomain buffer
++ * @param gain_index        index for the block multiplier
++ * @param gain_index_next   index for the next block multiplier
++ */
++static inline void interpolate_math(COOKContext *q, float* buffer,
++                                    int gain_index, int gain_index_next){
++    int gain_size_factor = q->samples_per_channel/8;
++    int i;
++    float fc1, fc2;
++
++    fc1 = q->math.pow2tab[gain_index+63];
++
++    if(gain_index == gain_index_next){              //static gain
++        for(i=0 ; i<gain_size_factor ; i++){
++            buffer[i]*=fc1;
++        }
++    } else {                                        //smooth gain
++        fc2 = q->math.gain_table[11 + (gain_index_next-gain_index)];
++        for(i=0 ; i<gain_size_factor ; i++){
++            buffer[i]*=fc1;
++            fc1*=fc2;
++        }
++    }
++}
++
++
++/**
++ * The modulated lapped transform, this takes transform coefficients
++ * and transforms them into timedomain samples.
++ * Applies transform window and overlaps buffers.
++ *
++ * @param q                 pointer to the COOKContext
++ * @param inbuffer          pointer to the mltcoefficients
++ * @param gain0             gain difference now/previous buffers
++ * @param previous_buffer   pointer to the previous buffer to be used for overlapping
++ */
++
++static void imlt_math(COOKContext *q, float *inbuffer,
++                      int gain0, float* previous_buffer)
++{
++    const float fc = q->math.pow2tab[gain0 + 63];
++    float *buffer1 = q->mono_mdct_output + q->samples_per_channel;
++    int i;
++
++    /* Inverse modified discrete cosine transform */
++    q->math.mdct_ctx.fft.imdct_calc(&q->math.mdct_ctx, q->mono_mdct_output,
++                                    inbuffer, q->math.mdct_tmp);
++
++    /* The weird thing here, is that the two halves of the time domain
++     * buffer are swapped. Also, the newest data, that we save away for
++     * next frame, has the wrong sign. Hence the subtraction below.
++     * Almost sounds like a complex conjugate/reverse data/FFT effect.
++     */
++
++    /* Apply window and overlap */
++    for(i = 0; i < q->samples_per_channel; i++){
++        buffer1[i] = buffer1[i] * fc * q->math.mlt_window[i] -
++          previous_buffer[i] * q->math.mlt_window[q->samples_per_channel - 1 - i];
++    }
++}
++
++
++/**
++ * Decoupling calculation for joint stereo coefficients.
++ *
++ * @param x                 mono coefficient
++ * @param table             number of decoupling table
++ * @param i                 table index
++ */
++static inline float cplscale_math(float x, int table, int i)
++{
++  return x * cplscales[table-2][i];
++}
++
++
++/**
++ * Final converion from floating point values to
++ * signed, 16 bit sound samples. Round and clip.
++ *
++ * @param q                 pointer to the COOKContext
++ * @param out               pointer to the output buffer
++ * @param chan              0: left or single channel, 1: right channel
++ */
++static inline void output_math(COOKContext *q, int16_t *out, int chan)
++{
++    float *output = q->mono_mdct_output + q->samples_per_channel;
++    int j;
++
++    /* FIXME: Should use DSPContext.float_to_int16() here.
++     */
++    for (j = 0; j < q->samples_per_channel; j++) {
++        out[chan + q->nb_channels * j] =
++          av_clip(lrintf(output[j]), -32768, 32767);
++    }
++}

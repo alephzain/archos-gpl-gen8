@@ -1,0 +1,203 @@
+diff -ruN dosfstools-2.11-orig//dosfsck/common.c dosfstools-2.11/dosfsck/common.c
+--- dosfstools-2.11-orig//dosfsck/common.c	2010-08-19 17:51:25.000000000 +0200
++++ dosfstools-2.11/dosfsck/common.c	2010-08-19 17:53:12.000000000 +0200
+@@ -15,6 +15,11 @@
+ #include <string.h>
+ #include <stdarg.h>
+ #include <errno.h>
++#include <sys/mman.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <fcntl.h>
+ 
+ #include "common.h"
+ 
+@@ -98,6 +103,42 @@
+ }
+ 
+ 
++void *alloc_mmap(size_t size)
++{
++    int fd;
++    void *data = 0;
++
++    if( swap_fd != -1 ){
++        die("cannot malloc twice mmap\n");
++    }
++
++    fd = open(swap_file, O_RDWR | O_CREAT, 0600);
++    if( fd == -1 ){
++        die("cannot open swap file %s\n", swap_file);
++    }
++
++    lseek( fd, size - 1, SEEK_SET );
++
++    if( write( fd, "", 1 ) != 1 ){
++        die("cannot create a swap file of %d bytes\n", size);
++    }
++
++    data = mmap( 0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0 );
++
++    swap_fd = fd;
++    swap_size = size;
++    return data;
++}
++
++void free_mmap(void *data)
++{
++    munmap( data, swap_size );
++
++    close( swap_fd );
++
++    swap_fd = -1;
++}
++
+ void *qalloc(void **root, size_t size)
+ {
+     LINK *link;
+@@ -106,7 +147,12 @@
+     block = qalloc_block(root, size);
+     if (block) {
+         return block;
+-    } else {
++    } else if( !*root && swap_file ){
++        link = alloc(sizeof(LINK));
++        link->next = *root;
++        *root = link;
++        return link->data = alloc_mmap(size);
++    } {
+         link = alloc(sizeof(LINK));
+         link->next = *root;
+         *root = link;
+@@ -122,7 +168,11 @@
+     while (*root) {
+ 	this = (LINK *) *root;
+ 	*root = this->next;
+-	free(this->data);
++	if( !*root && swap_file ){
++		free_mmap(this->data);
++	} else {
++		free(this->data);
++	}
+ 	free(this);
+     }
+     qfree_blocks();
+diff -ruN dosfstools-2.11-orig//dosfsck/common.h dosfstools-2.11/dosfsck/common.h
+--- dosfstools-2.11-orig//dosfsck/common.h	2010-08-19 17:51:25.000000000 +0200
++++ dosfstools-2.11/dosfsck/common.h	2010-08-19 17:48:19.000000000 +0200
+@@ -13,6 +13,10 @@
+ #ifndef _COMMON_H
+ #define _COMMON_H
+ 
++extern char *swap_file;
++extern int   swap_fd;
++extern int   swap_size;
++
+ void die(char *msg,...) __attribute((noreturn));
+ 
+ /* Displays a prinf-style message and terminates the program. */
+@@ -23,6 +27,9 @@
+ 
+ void *alloc(size_t size);
+ 
++void *alloc_mmap(size_t size);
++void free_mmap(void *data);
++
+ /* mallocs SIZE bytes and returns a pointer to the data. Terminates the program
+    if malloc fails. */
+ 
+diff -ruN dosfstools-2.11-orig//dosfsck/dosfsck.c dosfstools-2.11/dosfsck/dosfsck.c
+--- dosfstools-2.11-orig//dosfsck/dosfsck.c	2010-08-19 17:51:25.000000000 +0200
++++ dosfstools-2.11/dosfsck/dosfsck.c	2010-08-19 17:48:19.000000000 +0200
+@@ -31,11 +31,13 @@
+ unsigned long checked_clusters = 0;
+ unsigned long cluster_step = 0;
+ unsigned long last_print_cluster = 0;
+-
++char *swap_file;
++int swap_fd = -1;
++int swap_size;
+ 
+ static void usage(char *name)
+ {
+-    fprintf(stderr,"usage: %s [-aAflrtvVwy] [-d path -d ...] "
++    fprintf(stderr,"usage: %s [-aAflrtvVwys] [-d path -d ...] "
+       "[-u path -u ...]\n%15sdevice\n",name,"");
+     fprintf(stderr,"  -a       automatically repair the file system\n");
+     fprintf(stderr,"  -A       toggle Atari file system format\n");
+@@ -50,6 +52,7 @@
+     fprintf(stderr,"  -V       perform a verification pass\n");
+     fprintf(stderr,"  -w       write changes to disk immediately\n");
+     fprintf(stderr,"  -y       same as -a, for compat with other *fsck\n");
++    fprintf(stderr,"  -s path  use path as swap file\n");
+     exit(2);
+ }
+ 
+@@ -93,7 +96,7 @@
+     interactive = 1;
+     check_atari();
+ 
+-    while ((c = getopt(argc,argv,"Aad:flnrtu:vVwy")) != EOF)
++    while ((c = getopt(argc,argv,"Aad:flnrtu:vVwys:")) != EOF)
+ 	switch (c) {
+ 	    case 'A': /* toggle Atari format */
+ 	  	atari_format = !atari_format;
+@@ -137,6 +140,10 @@
+ 	    case 'w':
+ 		write_immed = 1;
+ 		break;
++	    case 's':
++		fprintf(stderr, "using swap_file %s\r\n", optarg);
++		swap_file = optarg;
++		break;
+ 	    default:
+ 		usage(argv[0]);
+ 	}
+diff -ruN dosfstools-2.11-orig//dosfsck/fat.c dosfstools-2.11/dosfsck/fat.c
+--- dosfstools-2.11-orig//dosfsck/fat.c	2010-08-19 17:51:25.000000000 +0200
++++ dosfstools-2.11/dosfsck/fat.c	2010-08-19 17:48:19.000000000 +0200
+@@ -59,7 +59,13 @@
+     first = alloc(eff_size);
+     fs_read(fs->fat_start,eff_size,first);
+     if (fs->nfats > 1) {
+-	second = alloc(eff_size);
++
++        if (swap_file) {
++            second = alloc_mmap(eff_size);
++        } else {
++            second = alloc(eff_size);
++        }
++
+ 	fs_read(fs->fat_start+fs->fat_size,eff_size,second);
+     }
+     else
+@@ -103,7 +109,11 @@
+     }
+     /* first contains now the valid FAT, so this can be freed */
+     if (second) {
+-	free(second);
++        if (swap_file) {
++            free_mmap(second);
++        } else {
++            free(second);
++        }
+     }
+     fs->fat = qalloc(&mem_queue,sizeof(FAT_ENTRY)*(fs->clusters+2ULL));
+     for (i = 2; i < fs->clusters+2; i++) get_fat(&fs->fat[i],first,i,fs);
+diff -ruN dosfstools-2.11-orig//Makefile dosfstools-2.11/Makefile
+--- dosfstools-2.11-orig//Makefile	2010-08-19 17:51:25.000000000 +0200
++++ dosfstools-2.11/Makefile	2010-08-19 17:48:19.000000000 +0200
+@@ -2,7 +2,12 @@
+ # Makefile for dosfstools (mkdosfs and dosfsck)
+ #
+ 
++ifeq ($(ARCH),arm)
++CC = arm-linux-gcc
++else
+ CC = gcc
++endif
++
+ CPP = $(CC) -E
+ OPTFLAGS = -O2 -fomit-frame-pointer -D_FILE_OFFSET_BITS=64
+ WARNFLAGS = -Wall

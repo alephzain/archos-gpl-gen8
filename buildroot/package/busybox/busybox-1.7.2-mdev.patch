@@ -1,0 +1,14 @@
+--- busybox-1.7.2/util-linux/mdev.c	2010-03-10 12:28:25.000000000 +0100
++++ busybox-1.7.2/util-linux/mdev_patched.c	2010-03-10 12:28:19.000000000 +0100
+@@ -47,7 +47,10 @@
+ 	/* Determine device name, type, major and minor */
+ 
+ 	device_name = bb_basename(path);
+-	type = path[5]=='c' ? S_IFCHR : S_IFBLK;
++
++	/* http://kernel.org/doc/pending/hotplug.txt says that only
++	 * "/sys/block/..." is for block devices. "sys/bus" etc is not! */
++	type = (strncmp(&path[5], "block/", 6) == 0 ? S_IFBLK : S_IFCHR);
+ 
+ 	/* If we have a config file, look up permissions for this device */
+ 

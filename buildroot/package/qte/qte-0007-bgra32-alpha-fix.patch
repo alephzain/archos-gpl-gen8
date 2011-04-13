@@ -1,0 +1,14 @@
+Gen6 requires the alpha component to be 255, otherwise everything is black.
+Index: qt-2.3.10/src/kernel/qgfxraster_qws.cpp
+===================================================================
+--- qt-2.3.10.orig/src/kernel/qgfxraster_qws.cpp	2008-05-30 14:12:16.114295353 +0200
++++ qt-2.3.10/src/kernel/qgfxraster_qws.cpp	2008-05-30 14:20:33.750654034 +0200
+@@ -3956,7 +3956,7 @@
+ 		tmp = hold & 0xff;
+ 		b = ((b-tmp) * av) / 256 + tmp;
+ 	    }
+-	    *(alphaptr++) = (r << 16) | (g << 8) | b;
++	    *(alphaptr++) = (255 << 24) | (r << 16) | (g << 8) | b;
+ 	}
+ 
+ 	// Now write it all out

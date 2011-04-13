@@ -1,0 +1,218 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/cache.c fusesmb-0.8.7/cache.c
+--- fusesmb-0.8.7.orig/cache.c	2009-04-01 12:33:23.000000000 +0200
++++ fusesmb-0.8.7/cache.c	2009-04-01 12:33:29.000000000 +0200
+@@ -49,7 +49,7 @@
+ #define MAX_SERVERLEN 255
+ #define MAX_WGLEN 255
+ 
+-#define DBG if (1)
++#define DBG if (0)
+ 
+ static pthread_t shutdown_thread;
+ static sigset_t blocked;
+@@ -141,6 +141,7 @@
+  */
+ static int nmblookup(const char *wg, stringlist_t *sl, hash_t *ipcache)
+ {
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     /* Find all ips for the workgroup by running :
+     $ nmblookup 'workgroup_name'
+     */
+@@ -149,7 +150,7 @@
+ 
+     DBG syslog(LOG_DEBUG, "calling \"%s\"\n", wg_cmd);
+     FILE *pipe = apopen(wg_cmd, "r");
+-
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     if (pipe == NULL)
+         return -1;
+ 
+@@ -200,6 +201,7 @@
+         strcat(ip_cmd, buf);
+     }
+     apclose(pipe);
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+ 
+     if (strlen(ip_cmd) == 13)
+     {
+@@ -209,8 +211,9 @@
+     debug("%s\n", ip_cmd);
+ 
+     DBG syslog(LOG_DEBUG, "calling \"%s\"\n", ip_cmd);
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     pipe = apopen(ip_cmd, "r");
+-
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     if (pipe == NULL)
+     {
+         free(ip_cmd);
+@@ -281,11 +284,14 @@
+     }
+     apclose(pipe);
+     free(ip_cmd);
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     return 0;
+ }
+ 
+ static int server_listing(SMBCCTX *ctx, stringlist_t *cache, const char *wg, const char *sv, const char *ip)
+ {
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
++
+     char tmp_path[MAXPATHLEN] = "smb://";
+     if (ip != NULL)
+     {
+@@ -298,6 +304,7 @@
+ 
+     struct smbc_dirent *share_dirent;
+     SMBCFILE *dir;
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     pthread_mutex_lock(&ctx_mutex);
+     dir = ctx->opendir(ctx, tmp_path);
+     if (dir == NULL)
+@@ -317,11 +324,14 @@
+             return -1;
+         }
+         pthread_mutex_unlock(&cache_mutex);
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+         return -1;
+     }
+ 
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     while (NULL != (share_dirent = ctx->readdir(ctx, dir)))
+     {
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+         if (//share_dirent->name[strlen(share_dirent->name)-1] == '$' ||
+             share_dirent->smbc_type != SMBC_FILE_SHARE ||
+             share_dirent->namelen == 0)
+@@ -347,6 +357,7 @@
+     }
+     ctx->closedir(ctx, dir);
+     pthread_mutex_unlock(&ctx_mutex);
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     return 0;
+ }
+ 
+@@ -381,15 +392,17 @@
+     strcat(temp_path, wg);
+     debug("Looking up Workgroup: %s", wg);
+     struct smbc_dirent *server_dirent;
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     pthread_mutex_lock(&ctx_mutex);
+     dir = ctx->opendir(ctx, temp_path);
+-
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     if (dir == NULL)
+     {
+         DBG syslog(LOG_DEBUG, "Using the nmblookup method for '%s'", wg);
+         ctx->closedir(ctx, dir);
+         pthread_mutex_unlock(&ctx_mutex);
+         nmblookup(wg, servers, ip_cache);
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     }
+     else {
+         DBG syslog(LOG_DEBUG, "Using the ctx->readdir method for '%s'", wg);
+@@ -406,6 +419,7 @@
+         }
+         ctx->closedir(ctx, dir);
+         pthread_mutex_unlock(&ctx_mutex);
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     }
+     sl_casesort(servers);
+ 
+@@ -440,7 +454,9 @@
+             server_listing(ctx, cache, wg, sl_item(servers, i), NULL);
+         else
+             server_listing(ctx, cache, wg, sl_item(servers, i), hnode_get(node));
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     }
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     hscan_t sc;
+     hnode_t *n;
+     hash_scan_begin(&sc, ip_cache);
+@@ -456,6 +472,7 @@
+     hash_destroy(ip_cache);
+     sl_free(servers);
+     smbc_free_context(ctx, 1);
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     return 0;
+ }
+ 
+@@ -502,6 +519,7 @@
+             workgroup_dirent->smbc_type != SMBC_WORKGROUP)
+         {
+             continue;
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+         }
+         char *thread_arg = strdup(workgroup_dirent->name);
+ 
+@@ -511,16 +529,20 @@
+             {
+                 debug("Ignoring Workgroup: %s", workgroup_dirent->name);
+                 continue;
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+             }
+         }
+ 
+         if (NULL == thread_arg)
+             continue;
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+         int rc;
+         rc = pthread_create(&threads[num_threads],
+                              &thread_attr, workgroup_listing_thread,
+                              (void*)thread_arg);
+ 
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
++
+         if (rc)
+         {
+             DBG syslog(LOG_DEBUG, "Failed to create thread for workgroup: %s", workgroup_dirent->name);
+@@ -540,7 +562,7 @@
+         DBG syslog(LOG_DEBUG, "Condition signal received (%i/%i).", num_threads_waiting, num_threads);
+     }
+     pthread_mutex_unlock(&startup_mutex);
+-    syslog(LOG_DEBUG, "giving all threads a GO!");
++    DBG syslog(LOG_DEBUG, "giving all threads a GO!");
+     pthread_cond_broadcast(&go_cv);
+ 
+     pthread_attr_destroy(&thread_attr);
+@@ -596,7 +618,7 @@
+ 
+ static void *shutdown_check(void* arg)
+ {
+-syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
++DBG syslog(LOG_DEBUG, "tid: %i # %s: %i", pthread_self(), __FUNCTION__, __LINE__);
+     sigfillset(&blocked);
+     if ( pthread_sigmask(SIG_SETMASK, &blocked, NULL) ) {
+         DBG syslog(LOG_DEBUG, "sigmask failed: %s", strerror(errno));
+@@ -626,7 +648,7 @@
+ 
+     apopen_shutdown();
+     _exit(EXIT_FAILURE);
+-    syslog(LOG_DEBUG, "tid: %i # %s: %i ;should never be reached", pthread_self(), __FUNCTION__, __LINE__);
++    DBG syslog(LOG_DEBUG, "tid: %i # %s: %i ;should never be reached", pthread_self(), __FUNCTION__, __LINE__);
+ 
+     return NULL;  // keep the compiler happy
+ }
+@@ -708,7 +730,21 @@
+ 
+     install_shutdown_handler();
+     SMBCCTX *ctx = fusesmb_cache_new_context(&cfg);
+-    cache_servers(ctx);
++    if ( cache_servers(ctx) == -1 ) {  // empty cache file for the error case/no smb servers.
++	char cachefile[1024];
++#ifndef ARCHOS
++        snprintf(cachefile, 1024, "%s/.smb/fusesmb.cache", getenv("HOME"));
++#else
++        snprintf(cachefile, 1024, "/var/cache/fusesmb.cache");
++#endif
++        umask(022);
++        FILE *fp = fopen(cachefile, "w");
++        if (fp == NULL)
++        {
++            return -1;
++        }
++        fclose(fp);
++    }
+     smbc_free_context(ctx, 1);
+     options_free(&opts);
+     if (argc == 1)

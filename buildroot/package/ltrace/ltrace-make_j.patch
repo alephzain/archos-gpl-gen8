@@ -1,0 +1,11 @@
+--- ltrace-0.5/Makefile.in	2009-11-18 13:17:49.000000000 +0100
++++ ltrace-0.5/Makefile.in_	2009-11-18 13:25:02.000000000 +0100
+@@ -38,6 +38,8 @@
+ 
+ all:		ltrace
+ 
++$(OBJ):		sysdeps/sysdep.o
++
+ ltrace:		sysdeps/sysdep.o $(OBJ)
+ 		$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
+ 

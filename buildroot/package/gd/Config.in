@@ -1,0 +1,8 @@
+config BR2_PACKAGE_GD
+	bool "libgd"
+	default n
+	depends on BR2_PACKAGE_JPEG
+	depends on BR2_PACKAGE_LIBPNG
+	depends on BR2_PACKAGE_FONTCONFIG
+	help
+		Library for the dynamic creation of images.

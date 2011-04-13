@@ -1,0 +1,7 @@
+config BR2_PACKAGE_PIDGIN
+        bool "pidgin"
+	default n
+	help
+	    Pidgin is an IM providing several protocols thanks to the library libpurple.
+	    http://www.pidgin.im
+	  

@@ -1,0 +1,14 @@
+config BR2_PACKAGE_OPROFILE
+	bool "oprofile"
+	default n
+	select BR2_PACKAGE_BASH
+	help
+	    oprofile system profiler
+
+config BR2_OPROFILE_INSTALL_ON_OPT
+	bool "  install on /opt"
+	depends BR2_PACKAGE_OPROFILE
+	default n
+	help
+	    install oprofile on /opt filesystem
+

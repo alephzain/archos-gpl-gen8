@@ -1,0 +1,56 @@
+diff --git a/libavformat/mpegts.c b/libavformat/mpegts.c
+index 8467e85..334de87 100644
+--- a/libavformat/mpegts.c
++++ b/libavformat/mpegts.c
+@@ -1625,12 +1625,8 @@  static int mpegts_read_packet(AVFormatContext *s,
+ static int mpegts_read_close(AVFormatContext *s)
+ {
+     MpegTSContext *ts = s->priv_data;
+-    int i;
+-
+-    clear_programs(ts);
+ 
+-    for(i=0;i<NB_PID_MAX;i++)
+-        if (ts->pids[i]) mpegts_close_filter(ts, ts->pids[i]);
++    ff_mpegts_parse_close(ts);
+ 
+     return 0;
+ }
+@@ -1798,6 +1794,11 @@  MpegTSContext *ff_mpegts_parse_open(AVFormatContext *s)
+     /* no stream case, currently used by RTP */
+     ts->raw_packet_size = TS_PACKET_SIZE;
+     ts->stream = s;
++
++    mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
++
++    mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
++
+     ts->auto_guess = 1;
+     return ts;
+ }
+@@ -1833,9 +1834,11 @@  void ff_mpegts_parse_close(MpegTSContext *ts)
+ {
+     int i;
+ 
++    clear_programs(ts);
++
+     for(i=0;i<NB_PID_MAX;i++)
+-        av_free(ts->pids[i]);
+-    av_free(ts);
++        if (ts->pids[i]) mpegts_close_filter(ts, ts->pids[i]);
++
+ }
+ 
+ AVInputFormat ff_mpegts_demuxer = {
+diff --git a/libavformat/rtpdec.c b/libavformat/rtpdec.c
+index c81ba1c..649fe2b 100644
+--- a/libavformat/rtpdec.c
++++ b/libavformat/rtpdec.c
+@@ -754,6 +754,7 @@  void rtp_parse_close(RTPDemuxContext *s)
+     ff_rtp_reset_packet_queue(s);
+     if (!strcmp(ff_rtp_enc_name(s->payload_type), "MP2T")) {
+         ff_mpegts_parse_close(s->ts);
++        av_free(s->ts);
+     }
+     av_free(s);
+ }

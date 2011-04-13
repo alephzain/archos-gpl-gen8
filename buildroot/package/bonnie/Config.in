@@ -1,0 +1,5 @@
+config BR2_PACKAGE_BONNIE
+	bool "bonnie++"
+	default n
+	help
+	  block device and filesystem performance tester

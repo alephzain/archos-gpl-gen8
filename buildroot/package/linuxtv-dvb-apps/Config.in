@@ -1,0 +1,6 @@
+config BR2_PACKAGE_LINUXTV-DVB-APPS
+bool "linuxtv-dvb-apps"
+	default y
+	help
+		http://www.linuxtv.org
+

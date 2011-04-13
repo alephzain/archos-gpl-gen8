@@ -1,0 +1,22 @@
+--- gcc-4.2.1_cortex/Makefile.in	2008-04-11 11:38:52.000000000 +0200
++++ gcc-4.2.1_cortex_/Makefile.in	2008-04-11 11:41:44.000000000 +0200
+@@ -2352,7 +2352,7 @@
+ 	@r=`${PWD_COMMAND}`; export r; \
+ 	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
+ 	$(MAKE) $(RECURSE_FLAGS_TO_PASS) installdirs \
+-	install-host install-target install-html install-pdf
++	install-host install-target
+ 
+ .PHONY: install-host-nogcc
+ install-host-nogcc:  \
+--- gcc-4.2.1_cortex/gcc/Makefile.in	2008-04-11 11:57:06.000000000 +0200
++++ gcc-4.2.1_cortex_/gcc/Makefile.in	2008-04-11 12:16:16.000000000 +0200
+@@ -3743,7 +3743,7 @@
+ # Install the driver last so that the window when things are
+ # broken is small.
+ install: install-common $(INSTALL_HEADERS) $(INSTALL_LIBGCC) \
+-    install-cpp install-man install-info install-html install-pdf \
++    install-cpp install-man install-info \
+     install-@POSUB@ install-driver
+ 
+ # Handle cpp installation.

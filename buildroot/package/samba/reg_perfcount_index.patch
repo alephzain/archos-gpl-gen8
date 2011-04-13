@@ -1,0 +1,20 @@
+--- samba-3.0.25_/source/registry/reg_perfcount.c	2007-03-01 05:55:05.000000000 +0100
++++ samba-3.0.25/source/registry/reg_perfcount.c	2008-04-14 18:09:06.000000000 +0200
+@@ -615,14 +615,14 @@
+ 	obj = NULL;
+ 	memset(buf, 0, PERFCOUNT_MAX_LEN);
+ 	memcpy(buf, data.dptr, data.dsize);
+-	begin = index(buf, '[');
+-	end = index(buf, ']');
++	begin = strchr(buf, '[');
++	end = strchr(buf, ']');
+ 	if(begin == NULL || end == NULL)
+ 		return False;
+ 	start = begin+1;
+ 
+ 	while(start < end) {
+-		stop = index(start, ',');
++		stop = strchr(start, ',');
+ 		if(stop == NULL)
+ 			stop = end;
+ 		*stop = '\0';

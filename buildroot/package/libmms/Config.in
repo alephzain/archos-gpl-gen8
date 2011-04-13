@@ -1,0 +1,5 @@
+config BR2_PACKAGE_LIBMMS
+        bool "libmms"
+        default n
+        help
+        MMS streaming support

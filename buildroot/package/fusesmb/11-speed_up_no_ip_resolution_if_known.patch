@@ -1,0 +1,25 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/smbctx.c fusesmb-0.8.7/smbctx.c
+--- fusesmb-0.8.7.orig/smbctx.c	2009-04-01 12:32:58.000000000 +0200
++++ fusesmb-0.8.7/smbctx.c	2009-04-01 12:33:26.000000000 +0200
+@@ -20,6 +20,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <ctype.h>
+ #include "smbctx.h"
+ #include "apopen.h"
+ #include "debug.h"
+@@ -189,7 +190,12 @@
+     debug("server: %s : share: %s : workgroup: %s", server, share, workgroup);
+ 
+     /* Convert ip to server name */
+-    nmblookup1(server, sv, 1024);
++    if ( !isdigit(server[0]) ) {
++        strncpy(sv, server, sizeof(sv));
++    }
++    else {
++        nmblookup1(server, sv, 1024);
++    }
+ 
+     /* Look for username, password for /SERVER/SHARE in the config file */
+     char sv_section[1024] = "/";

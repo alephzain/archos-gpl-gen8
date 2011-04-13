@@ -1,0 +1,28 @@
+--- jpeg/jmorecfg.h	2008-05-07 09:06:33.000000000 +0200
++++ jpeg/jmorecfg.h	2008-05-07 09:06:46.000000000 +0200
+@@ -131,6 +131,7 @@
+ 
+ /* UINT8 must hold at least the values 0..255. */
+ 
++#ifndef GODDAMIT_I_HAVE_UINT8			/* fugly patch */
+ #ifdef HAVE_UNSIGNED_CHAR
+ typedef unsigned char UINT8;
+ #else /* not HAVE_UNSIGNED_CHAR */
+@@ -140,14 +141,17 @@
+ typedef short UINT8;
+ #endif /* CHAR_IS_UNSIGNED */
+ #endif /* HAVE_UNSIGNED_CHAR */
++#endif
+ 
+ /* UINT16 must hold at least the values 0..65535. */
+ 
++#ifndef GODDAMIT_I_HAVE_UINT16			/* fugly patch */
+ #ifdef HAVE_UNSIGNED_SHORT
+ typedef unsigned short UINT16;
+ #else /* not HAVE_UNSIGNED_SHORT */
+ typedef unsigned int UINT16;
+ #endif /* HAVE_UNSIGNED_SHORT */
++#endif
+ 
+ /* INT16 must hold at least the values -32768..32767. */
+ 

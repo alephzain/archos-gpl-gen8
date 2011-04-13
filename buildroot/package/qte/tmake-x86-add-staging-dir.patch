@@ -1,0 +1,16 @@
+diff -ur tmake-1.13.orig/lib/qws/linux-x86-g++/tmake.conf tmake-1.13/lib/qws/linux-x86-g++/tmake.conf
+--- tmake-1.13.orig/lib/qws/linux-x86-g++/tmake.conf	2008-07-25 16:51:16.000000000 +0200
++++ tmake-1.13/lib/qws/linux-x86-g++/tmake.conf	2008-07-25 17:04:10.000000000 +0200
+@@ -27,8 +27,10 @@
+ TMAKE_CXXFLAGS_YACC	= $$TMAKE_CFLAGS_YACC
+ TMAKE_CXXFLAGS_THREAD	= $$TMAKE_CFLAGS_THREAD
+ 
+-TMAKE_INCDIR		=
+-TMAKE_LIBDIR		=
++# __TOOLCHAIN__ gets replaced with the staging dir by qte.mk
++TMAKE_INCDIR		= __TOOLCHAIN__/usr/include __TOOLCHAIN__/include
++# We need the -L for the second lib dir, tmake does not add it itself!
++TMAKE_LIBDIR		= __TOOLCHAIN__/usr/lib -L__TOOLCHAIN__/lib
+ TMAKE_INCDIR_X11	= 
+ TMAKE_LIBDIR_X11	= 
+ TMAKE_INCDIR_QT		= $(QTDIR)/include

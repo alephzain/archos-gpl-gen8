@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LIBTOMCRYPT
+	bool "libtomcrypt"
+	default n
+	help
+	  A system-independent library for user-level network packet capture.
+
+	  http://www.libtom.org/

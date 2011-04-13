@@ -1,0 +1,58 @@
+diff -r e3a2d7aa839c lib/helper.c
+--- a/lib/helper.c	Wed Jun 04 18:33:57 2008 +0200
++++ b/lib/helper.c	Thu Jun 05 10:14:52 2008 +0200
+@@ -17,6 +17,9 @@
+ #include <string.h>
+ #include <limits.h>
+ #include <errno.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++
+ 
+ enum  {
+     KEY_HELP,
+@@ -168,20 +171,36 @@
+ static int fuse_daemonize(int foreground)
+ {
+     int res;
+-
++    int fd;
++    
+     if (!foreground) {
+-        res = daemon(0, 0);
+-        if (res == -1) {
++        res = fork ();
++        if (res < 0) {
+             perror("fuse: failed to daemonize program\n");
+             return -1;
+         }
+-    } else {
+-        /* Ensure consistant behavior across debug and normal modes */
+-        res = chdir("/");
+-        if (res == -1) {
+-            perror("fuse: failed to change working directory to /\n");
++        if (res > 0)
++            exit(0);
++        res = setsid();
++        if (res < 0) {
++            perror("fuse: failed to daemonize program\n");
+             return -1;
+         }
++        if (fd = open("/dev/null", O_RDWR, 0) < 0) { 
++            perror("fuse: failed to daemonize program\n");
++            return -1;
++        }
++        dup2(fd, STDIN_FILENO);
++        dup2(fd, STDOUT_FILENO);
++        dup2(fd, STDERR_FILENO);
++        if (fd > 2)
++            close(fd);
++    } 
++    /* Ensure consistant behavior across debug and normal modes */
++    res = chdir("/");
++    if (res == -1) {
++        perror("fuse: failed to change working directory to /\n");
++        return -1;
+     }
+     return 0;
+ }

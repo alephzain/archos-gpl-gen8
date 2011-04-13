@@ -1,0 +1,40 @@
+diff -Nur mtd-utils-1.2.0-orig/ubi-utils/new-utils/Makefile mtd-utils-1.2.0/ubi-utils/new-utils/Makefile
+--- mtd-utils-1.2.0-orig/ubi-utils/new-utils/Makefile	2009-06-17 16:22:33.000000000 +0200
++++ mtd-utils-1.2.0/ubi-utils/new-utils/Makefile	2009-06-17 16:19:55.000000000 +0200
+@@ -10,7 +10,9 @@
+ INCLUDEDIR=/usr/include
+ 
+ CC := $(CROSS)gcc
+-CFLAGS := -Iinclude -Isrc -I$(KERNELHDR) $(OPTFLAGS) -Werror -Wall
++CFLAGS ?= $(OPTFLAGS) -Werror
++CFLAGS += -Wall
++CPPFLAGS += -Iinclude -Isrc -I$(KERNELHDR)
+ 
+ LIBS = libubi libmtd libubigen libiniparser libscan
+ UTILS = ubiupdatevol ubimkvol ubirmvol ubicrc32 ubinfo ubiattach \
+@@ -26,20 +28,20 @@
+ 
+ # The below is the rule to get an .o file from a .c file
+ %.o: %.c
+-	$(CC) $(CFLAGS) $< -c -o $@
++	$(CC) $(CPPFLAGS) $(CFLAGS) $< -c -o $@
+ 
+ # And the below is the rule to get final executable from its .o and common.o
+ %: libubi.a %.o common.o
+-	$(CC) $(CFLAGS) $(filter %.o, $^) -L. -lubi -o $@
++	$(CC) $(LDFLAGS) $(filter %.o, $^) -L. -lubi -o $@
+ 
+ ubicrc32: ubicrc32.o crc32.o
+-	$(CC) $(CFLAGS) -o $@ $^
++	$(CC) $(LDFLAGS) -o $@ $^
+ 
+ ubinize: ubinize.o common.o crc32.o libiniparser.a libubigen.a
+-	$(CC) $(CFLAGS) $(filter %.o, $^) -L. -liniparser -lubigen -o $@
++	$(CC) $(LDFLAGS) $(filter %.o, $^) -L. -liniparser -lubigen -o $@
+ 
+ ubiformat: ubiformat.o common.o crc32.o libmtd.a libscan.a libubi.a libubigen.a
+-	$(CC) $(CFLAGS) $(filter %.o, $^) -L. -lmtd -lscan -lubi -lubigen -o $@
++	$(CC) $(LDFLAGS) $(filter %.o, $^) -L. -lmtd -lscan -lubi -lubigen -o $@
+ 
+ libubi.a: libubi.o
+ 	$(AR) crv $@ $^

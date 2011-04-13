@@ -1,0 +1,13 @@
+--- ffmpeg/libavutil//common.h	2010-06-22 21:11:33.000000000 +0200
++++ ffmpeg_/libavutil//common.h	2010-06-28 12:08:34.000000000 +0200
+@@ -52,6 +52,10 @@
+ #define FF_ARRAY_ELEMS(a) (sizeof(a) / sizeof((a)[0]))
+ #define FFALIGN(x, a) (((x)+(a)-1)&~((a)-1))
+ 
++/* work around stupid uclibc */
++int __isnan(double x);
++int __isnanf(float x);
++
+ /* misc math functions */
+ extern const uint8_t ff_log2_tab[256];
+ 

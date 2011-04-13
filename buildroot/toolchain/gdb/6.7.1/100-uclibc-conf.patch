@@ -1,0 +1,70 @@
+diff -rNdup gdb-6.6.orig/bfd/configure gdb-6.6/bfd/configure
+--- gdb-6.6.orig/bfd/configure	2006-10-25 08:49:20.000000000 +0200
++++ gdb-6.6/bfd/configure	2007-05-14 10:35:50.000000000 +0200
+@@ -5033,6 +5033,11 @@
+   lt_cv_deplibs_check_method=pass_all
+   ;;
+
++linux-uclibc*)
++  lt_cv_deplibs_check_method=pass_all
++  lt_cv_file_magic_test_file=`echo /lib/libuClibc-*.so`
++  ;;
++
+ netbsd*)
+   if echo __ELF__ | $CC -E - | $GREP __ELF__ > /dev/null; then
+     lt_cv_deplibs_check_method='match_pattern /lib[^/]+(\.so\.[0-9]+\.[0-9]+|_pic\.a)$'
+diff -rNdup gdb-6.6.orig/libtool.m4 gdb-6.6/libtool.m4
+--- gdb-6.6.orig/libtool.m4	2005-12-27 17:37:57.000000000 +0100
++++ gdb-6.6/libtool.m4	2007-05-14 10:35:50.000000000 +0200
+@@ -2352,6 +2352,24 @@
+   dynamic_linker='GNU/Linux ld.so'
+   ;;
+
++linux-uclibc*)
++  version_type=linux
++  need_lib_prefix=no
++  need_version=no
++  library_names_spec='${libname}${release}.so$versuffix ${libname}${release}.so$major $libname.so'
++  soname_spec='${libname}${release}.so$major'
++  finish_cmds='PATH="\$PATH:/sbin" ldconfig -n $libdir'
++  shlibpath_var=LD_LIBRARY_PATH
++  shlibpath_overrides_runpath=no
++  # This implies no fast_install, which is unacceptable.
++  # Some rework will be needed to allow for fast_install
++  # before this can be enabled.
++  # Note: copied from linux-gnu, and may not be appropriate.
++  hardcode_into_libs=yes
++  # Assume using the uClibc dynamic linker.
++  dynamic_linker="uClibc ld.so"
++  ;;
++
+ netbsd*)
+   version_type=sunos
+   need_lib_prefix=no
+@@ -2370,6 +2388,11 @@
+   hardcode_into_libs=yes
+   ;;
+
++linux-uclibc*)
++  lt_cv_deplibs_check_method=pass_all
++  lt_cv_file_magic_test_file=`echo /lib/libuClibc-*.so`
++  ;;
++
+ newsos6)
+   version_type=linux
+   library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}$major $libname${shared_ext}'
+diff -rNdup gdb-6.6.orig/opcodes/configure gdb-6.6/opcodes/configure
+--- gdb-6.6.orig/opcodes/configure	2006-10-25 08:49:20.000000000 +0200
++++ gdb-6.6/opcodes/configure	2007-05-14 10:35:50.000000000 +0200
+@@ -3590,6 +3590,11 @@ netbsd* | knetbsd*-gnu)
+   fi
+   ;;
+ 
++linux-uclibc*)
++  lt_cv_deplibs_check_method=pass_all
++  lt_cv_file_magic_test_file=`echo /lib/libuClibc-*.so`
++  ;;
++
+ newsos6)
+   lt_cv_deplibs_check_method='file_magic ELF [0-9][0-9]*-bit [ML]SB (executable|dynamic lib)'
+   lt_cv_file_magic_cmd=/usr/bin/file

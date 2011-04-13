@@ -1,0 +1,68 @@
+--- oprofile-0.9.4/utils/opcontrol_	2008-04-28 23:23:23.000000000 +0200
++++ oprofile-0.9.4/utils/opcontrol	2008-09-16 11:42:23.000000000 +0200
+@@ -29,7 +29,7 @@
+ 	arg=`echo $1 | awk -F= '{print $1}'`
+ 	val=`echo $1 | awk -F= '{print $2}'`
+ 
+-	dev_name=`echo $arg | tr . /`
++	dev_name=`echo $arg | sed "s/\./\//"`
+ 
+ 	if test ! -f /proc/sys/$dev_name; then
+ 		echo "/proc/sys/$dev_name does not exist or is not a regular file" >&2
+@@ -170,7 +170,7 @@
+ {
+ 	grep oprofilefs /proc/filesystems >/dev/null
+ 	if test "$?" -ne 0; then
+-		modprobe oprofile
++		insmod /lib/modules/oprofile.ko
+ 		if test "$?" != "0"; then
+ 			# couldn't load the module
+ 			return
+@@ -218,7 +218,7 @@
+ 
+ load_module()
+ {
+-	OPROFILE_AVAILABLE=no
++	OPROFILE_AVAILABLE=yes
+ 	load_module_26
+ 	if test "$OPROFILE_AVAILABLE" != "yes"; then
+ 		load_module_24
+@@ -300,7 +300,7 @@
+ 	OPROFILED="$OPDIR/oprofiled"
+ 
+ 	# location for daemon setup information
+-	SETUP_DIR="/root/.oprofile"
++	SETUP_DIR="/mnt/system/.oprofile"
+ 	SETUP_FILE="$SETUP_DIR/daemonrc"
+ 
+ 	# initialize daemon vars
+@@ -306,7 +306,7 @@
+ 	# initialize daemon vars
+ 	decide_oprofile_device_mount
+ 	CPUTYPE=`cat $MOUNT/cpu_type`
+-	OP_COUNTERS=`ls $MOUNT/ | grep "^[0-9]\+\$" | tr "\n" " "`
++	OP_COUNTERS=`ls $MOUNT/ | grep "^[0-9]\+\$" | sed "s/\n/ /"`
+ 	NR_CHOSEN=0
+ 
+ 	do_init_daemon_vars
+@@ -935,7 +935,7 @@
+ 
+ 	if test $KERNEL_SUPPORT = "yes"; then
+ 		echo "Stopping profiling."
+-		echo 0 >/dev/oprofile/enable
++		echo 0 >$MOUNT/enable
+ 	fi
+ 	kill -USR2 `cat $LOCK_FILE` 2>/dev/null
+ }
+@@ -1607,9 +1607,9 @@
+ do_deinit()
+ {
+ 	# unmount /dev/oprofile if it is mounted
+-	OPROF_FS=`grep /dev/oprofile /etc/mtab`
++	OPROF_FS=`grep $MOUNT /etc/mtab`
+ 	if test -n "$OPROF_FS"; then
+-		umount /dev/oprofile
++		umount $MOUNT
+ 	fi
+ 	# unload the oprofile module if it is around
+ 	OPROF_MOD=`lsmod | grep oprofile`

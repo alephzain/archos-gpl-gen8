@@ -1,0 +1,61 @@
+From c6f7e31fa41a0a39cbbc908ae240830c6be30adf Mon Sep 17 00:00:00 2001
+From: Rob Taylor <rob.taylor@codethink.co.uk>
+Date: Fri, 29 Aug 2008 16:41:53 +0100
+Subject: [PATCH] Add tny_camel_send_queue_new_with_folders to create a TnyCamelSendQueue with user-created folders
+
+---
+ libtinymail-camel/tny-camel-send-queue.c |   24 ++++++++++++++++++++++++
+ libtinymail-camel/tny-camel-send-queue.h |    2 ++
+ 2 files changed, 26 insertions(+), 0 deletions(-)
+
+diff --git a/libtinymail-camel/tny-camel-send-queue.c b/libtinymail-camel/tny-camel-send-queue.c
+index 5fea935..1a045ac 100644
+--- a/libtinymail-camel/tny-camel-send-queue.c
++++ b/libtinymail-camel/tny-camel-send-queue.c
+@@ -1624,6 +1624,30 @@ tny_camel_send_queue_new (TnyCamelTransportAccount *trans_account)
+ 	return TNY_SEND_QUEUE (self);
+ }
+ 
++/**
++ * tny_camel_send_queue_new_with_folders:
++ * @trans_account: A #TnyCamelTransportAccount instance
++ *
++ * Create a new #TnySendQueue instance implemented for Camel,
++ * Using custom-suppied outbox and inbox
++ *
++ * Return value: A new #TnySendQueue instance implemented for Camel
++ **/
++TnySendQueue*
++tny_camel_send_queue_new_with_folders (TnyCamelTransportAccount *trans_account, TnyFolder *outbox, TnyFolder *sentbox)
++{
++	TnyCamelSendQueue *self = g_object_new (TNY_TYPE_CAMEL_SEND_QUEUE, NULL);
++	TnyCamelSendQueuePriv *priv = TNY_CAMEL_SEND_QUEUE_GET_PRIVATE (self);
++
++	g_assert (TNY_IS_CAMEL_TRANSPORT_ACCOUNT (trans_account));
++	priv->outbox_cache  = g_object_ref(outbox);
++	priv->sentbox_cache = g_object_ref(sentbox);
++	tny_camel_send_queue_set_transport_account (self, trans_account);
++
++	return TNY_SEND_QUEUE (self);
++}
++
++
+ static void
+ on_setonline_happened (TnyCamelAccount *account, gboolean online, gpointer user_data)
+ {
+diff --git a/libtinymail-camel/tny-camel-send-queue.h b/libtinymail-camel/tny-camel-send-queue.h
+index f14ead8..ece52aa 100644
+--- a/libtinymail-camel/tny-camel-send-queue.h
++++ b/libtinymail-camel/tny-camel-send-queue.h
+@@ -60,6 +60,8 @@ GType tny_camel_send_queue_get_type (void);
+ 
+ TnySendQueue* tny_camel_send_queue_new (TnyCamelTransportAccount *trans_account);
+ 
++TnySendQueue* tny_camel_send_queue_new_with_folders (TnyCamelTransportAccount *trans_account, TnyFolder *outbox, TnyFolder *sentbox);
++
+ void tny_camel_send_queue_flush (TnyCamelSendQueue *self);
+ 
+ TnyCamelTransportAccount* tny_camel_send_queue_get_transport_account (TnyCamelSendQueue *self);
+-- 
+1.5.6.3
+

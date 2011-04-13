@@ -1,0 +1,6 @@
+config BR2_PACKAGE_TINYMAIL
+	bool "tinymail"
+	default n
+	help
+		Library to manage e-mail backends
+		http://www.tinymail.org

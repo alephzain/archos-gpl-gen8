@@ -1,0 +1,84 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/apopen.c fusesmb-0.8.7/apopen.c
+--- fusesmb-0.8.7.orig/apopen.c	2009-04-01 12:32:58.000000000 +0200
++++ fusesmb-0.8.7/apopen.c	2009-04-01 12:33:40.000000000 +0200
+@@ -5,10 +5,13 @@
+ #include <sys/wait.h>
+ #include <pthread.h>
+ #include <string.h>
++#include <syslog.h>
+ 
+ #define LOCK_CHILD_LIST		pthread_mutex_lock(&apopen_mutex)
+ #define UNLOCK_CHILD_LIST	pthread_mutex_unlock(&apopen_mutex)
+ 
++#define DBG if (0)
++
+ pthread_mutex_t apopen_mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
+ // ripped from uclibc popen.c
+@@ -64,6 +67,12 @@
+ 			close(child_fd);
+ 		}
+ 
++		// become a process group leaded
++		printf("settting pg\n");
++		if ( setpgid(0, 0) ) {
++			printf("setpgid failed: %s\n", strerror(errno));
++		}
++
+ 		/* SUSv3 requires that any previously popen()'d streams in the
+ 		 * parent shall be closed in the child. */
+ 		for (po = popen_list ; po ; po = po->next) {
+@@ -81,7 +90,7 @@
+ 	close(child_fd);
+ 
+ 	if (pid > 0) {				/* Parent of vfork... */
+-                printf("putting %i into the child list\n", pid);
++		DBG syslog(LOG_DEBUG, "putting %i into the child list\n", pid);
+ 		pi->pid = pid;
+ 		pi->f = fp;
+ 		//LOCK;
+@@ -142,7 +151,7 @@
+ 		do {
+ 			if (waitpid(pid, &stat, 0) >= 0) {
+ 				UNLOCK_CHILD_LIST;
+-                                printf("removed %i from the child list\n", pid);
++				DBG syslog(LOG_DEBUG, "removed %i from the child list\n", pid);
+ 				return stat;
+ 			}
+ 			if (errno != EINTR) {
+@@ -151,7 +160,7 @@
+ 		} while (1);
+ 	}
+         UNLOCK_CHILD_LIST;
+-        printf("something was wrong\n");
++	DBG syslog(LOG_DEBUG, "something was wrong\n");
+ 
+ 	return -1;
+ }
+@@ -162,20 +171,20 @@
+     // walk the child list and kill'em all!
+     struct popen_list_item *cursor = popen_list;
+     while ( cursor ) {
+-        printf("about to kill %i\n", cursor->pid);
+-        if ( kill(cursor->pid, SIGKILL) ) {
+-            printf("kill(%i, SIGKILL) failed: %s\n", cursor->pid, strerror(errno));
++        DBG syslog(LOG_DEBUG, "about to kill %i\n", cursor->pid);
++        if ( kill( -(cursor->pid), SIGKILL) ) { // send a signal to every process inside a group
++            DBG syslog(LOG_DEBUG, "kill(%i, SIGKILL) failed: %s\n", cursor->pid, strerror(errno));
+         }
+         cursor = cursor->next;
+     }
+-    printf("all processes got their kill\n");
++    DBG syslog(LOG_DEBUG, "all processes got their kill\n");
+ 
+     // afterwards pick up the remains
+     cursor = popen_list;
+     while ( cursor ) {
+-        printf("waiting %i\n", cursor->pid);
++        DBG syslog(LOG_DEBUG, "waiting %i\n", cursor->pid);
+         if ( waitpid(cursor->pid, NULL, 0) == -1 ) {
+-            printf("waitpid for %i failed: %s\n", cursor->pid, strerror(errno));
++            DBG syslog(LOG_DEBUG, "waitpid for %i failed: %s\n", cursor->pid, strerror(errno));
+         }
+         cursor = cursor->next;
+     }

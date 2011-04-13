@@ -1,0 +1,6 @@
+archos /usr/share/fonts/archos.ttf FT n 75 0 su
+archos_world /opt/usr/share/fonts/archos_world.ttf FT n 50 0 su
+sc /opt/usr/share/fonts/SC16.pcf FT n 50 160 u
+sc /opt/usr/share/fonts/SC24.pcf FT n 50 240 u
+tc /opt/usr/share/fonts/TC16.pcf FT n 50 160 u
+tc /opt/usr/share/fonts/TC24.pcf FT n 50 240 u

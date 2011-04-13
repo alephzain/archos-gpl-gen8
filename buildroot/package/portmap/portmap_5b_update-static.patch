@@ -1,0 +1,39 @@
+--- p/Makefile	2009-02-11 11:41:33.000000000 +0100
++++ p/Makefile	2009-02-12 11:41:52.000000000 +0100
+@@ -88,7 +88,7 @@
+ LIBS	= -lutil
+ NSARCHS	= 
+ O	= -Wall -O2 -pipe
+-
++COMPSTATIC = -static
+ # NEXTSTEP is a little different. The following seems to work with NS 3.2
+ #
+ # SETPGRP	=-DUSE_SETPGRP00
+@@ -116,9 +116,18 @@
+ 
+ all:	portmap pmap_dump pmap_set
+ 
++portmap-static: clean portmap-static-clean portmap-mkdir-static portmap-static-build
++
+ portmap: $(OBJECTS)
+ 	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(WRAP_LIB) $(LIBS)
+ 
++portmap-mkdir-static: 
++	/bin/mkdir ./portmap-bin 
++
++portmap-static-build:  $(OBJECTS)
++	$(CC) $(CFLAGS) $(COMPSTATIC) -o portmap-bin/portmap-static $(OBJECTS) $(WRAP_LIB) $(LIBS)
++	
++
+ pmap_dump: pmap_dump.c
+ 	$(CC) $(CFLAGS) -o $@ $? $(LIBS)
+ 
+@@ -137,6 +146,8 @@
+ clean:
+ 	rm -f *.o portmap pmap_dump pmap_set from_local get_myaddress \
+ 	    get_myaddress.so core
++portmap-static-clean:
++	rm -rf portmap-bin/
+ 
+ tidy:	clean
+ 	chmod 755 . ; chmod -R a+r .

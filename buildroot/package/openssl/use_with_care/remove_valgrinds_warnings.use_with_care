@@ -1,0 +1,20 @@
+--- openssl/crypto/rand/md_rand.old	2008-10-31 18:11:40.000000000 +0100
++++ openssl/crypto/rand/md_rand.c	2008-10-31 18:12:16.000000000 +0100
+@@ -272,7 +272,7 @@
+ 		else
+ 			MD_Update(&m,&(state[st_idx]),j);
+ 			
+-		MD_Update(&m,buf,j);
++//		MD_Update(&m,buf,j);
+ 		MD_Update(&m,(unsigned char *)&(md_c[0]),sizeof(md_c));
+ 		MD_Final(&m,local_md);
+ 		md_c[1]++;
+@@ -474,7 +474,7 @@
+ 		MD_Update(&m,local_md,MD_DIGEST_LENGTH);
+ 		MD_Update(&m,(unsigned char *)&(md_c[0]),sizeof(md_c));
+ #ifndef PURIFY
+-		MD_Update(&m,buf,j); /* purify complains */
++//		MD_Update(&m,buf,j); /* purify complains */
+ #endif
+ 		k=(st_idx+MD_DIGEST_LENGTH/2)-st_num;
+ 		if (k > 0)

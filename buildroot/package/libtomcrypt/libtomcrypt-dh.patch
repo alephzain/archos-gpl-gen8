@@ -1,0 +1,1511 @@
+diff -Nur libtomcrypt-1.16-orig/demos/test.c libtomcrypt-1.16/demos/test.c
+--- libtomcrypt-1.16-orig/demos/test.c	2006-12-16 20:08:39.000000000 +0100
++++ libtomcrypt-1.16/demos/test.c	2007-09-05 18:46:14.000000000 +0200
+@@ -24,6 +24,7 @@
+    printf("\nmac_test......"); fflush(stdout); x = mac_test();         printf(x ? "failed" : "passed");if (x) exit(EXIT_FAILURE);
+    printf("\npkcs_1_test..."); fflush(stdout); x = pkcs_1_test();      printf(x ? "failed" : "passed");if (x) exit(EXIT_FAILURE);
+    printf("\nrsa_test......"); fflush(stdout); x = rsa_test();         printf(x ? "failed" : "passed");if (x) exit(EXIT_FAILURE);
++   printf("\ndh_test......."); fflush(stdout); x = dh_test();          printf(x ? "failed" : "passed");if (x) exit(EXIT_FAILURE);
+    printf("\necc_test......"); fflush(stdout); x = ecc_tests();        printf(x ? "failed" : "passed");if (x) exit(EXIT_FAILURE); 
+    printf("\ndsa_test......"); fflush(stdout); x = dsa_test();         printf(x ? "failed" : "passed");if (x) exit(EXIT_FAILURE);
+    printf("\nkatja_test...."); fflush(stdout); x = katja_test();       printf(x ? "failed" : "passed");if (x) exit(EXIT_FAILURE);
+diff -Nur libtomcrypt-1.16-orig/makefile libtomcrypt-1.16/makefile
+--- libtomcrypt-1.16-orig/makefile	2006-12-16 20:08:39.000000000 +0100
++++ libtomcrypt-1.16/makefile	2007-09-05 17:52:22.000000000 +0200
+@@ -199,6 +199,7 @@
+ src/pk/ecc/ltc_ecc_is_valid_idx.o src/pk/ecc/ltc_ecc_map.o src/pk/ecc/ltc_ecc_mul2add.o \
+ src/pk/ecc/ltc_ecc_mulmod.o src/pk/ecc/ltc_ecc_mulmod_timing.o src/pk/ecc/ltc_ecc_points.o \
+ src/pk/ecc/ltc_ecc_projective_add_point.o src/pk/ecc/ltc_ecc_projective_dbl_point.o \
++src/pk/dh/dh.o \
+ src/pk/katja/katja_decrypt_key.o src/pk/katja/katja_encrypt_key.o src/pk/katja/katja_export.o \
+ src/pk/katja/katja_exptmod.o src/pk/katja/katja_free.o src/pk/katja/katja_import.o \
+ src/pk/katja/katja_make_key.o src/pk/pkcs1/pkcs_1_i2osp.o src/pk/pkcs1/pkcs_1_mgf1.o \
+diff -Nur libtomcrypt-1.16-orig/src/headers/tomcrypt_custom.h libtomcrypt-1.16/src/headers/tomcrypt_custom.h
+--- libtomcrypt-1.16-orig/src/headers/tomcrypt_custom.h	2006-12-16 20:08:40.000000000 +0100
++++ libtomcrypt-1.16/src/headers/tomcrypt_custom.h	2007-09-05 18:17:39.000000000 +0200
+@@ -297,6 +297,26 @@
+ /* Include RSA support */
+ #define MRSA
+ 
++/* Include Diffie-Hellman support */
++#ifndef GPM_DESC
++/* is_prime fails for GPM */
++#define MDH
++/* Supported Key Sizes */
++#define DH768
++#define DH1024
++#define DH1280
++#define DH1536
++#define DH1792
++#define DH2048
++
++#ifndef TFM_DESC
++/* tfm has a problem in fp_isprime for larger key sizes */
++#define DH2560
++#define DH3072
++#define DH4096
++#endif
++#endif
++
+ /* Include Katja (a Rabin variant like RSA) */
+ /* #define MKAT */ 
+ 
+diff -Nur libtomcrypt-1.16-orig/src/headers/tomcrypt_math.h libtomcrypt-1.16/src/headers/tomcrypt_math.h
+--- libtomcrypt-1.16-orig/src/headers/tomcrypt_math.h	2006-12-16 20:08:40.000000000 +0100
++++ libtomcrypt-1.16/src/headers/tomcrypt_math.h	2007-09-05 17:54:53.000000000 +0200
+@@ -258,6 +258,24 @@
+    */
+    int (*lcm)(void *a, void *b, void *c);
+ 
++   /** Modular addition
++      @param  a     The first source
++      @param  b     The second source 
++      @param  c     The modulus
++      @param  d     The destination (a + b mod c)
++      @return CRYPT_OK on success
++   */
++   int (*addmod)(void *a, void *b, void *c, void *d);
++
++   /** Modular substraction
++      @param  a     The first source
++      @param  b     The second source 
++      @param  c     The modulus
++      @param  d     The destination (a - b mod c)
++      @return CRYPT_OK on success
++   */
++   int (*submod)(void *a, void *b, void *c, void *d);
++
+    /** Modular multiplication
+       @param  a     The first source
+       @param  b     The second source 
+@@ -475,6 +493,8 @@
+ #define mp_gcd(a, b, c)              ltc_mp.gcd(a, b, c)
+ #define mp_lcm(a, b, c)              ltc_mp.lcm(a, b, c)
+ 
++#define mp_addmod(a, b, c, d)        ltc_mp.addmod(a, b, c, d)
++#define mp_submod(a, b, c, d)        ltc_mp.submod(a, b, c, d)
+ #define mp_mulmod(a, b, c, d)        ltc_mp.mulmod(a, b, c, d)
+ #define mp_sqrmod(a, b, c)           ltc_mp.sqrmod(a, b, c)
+ #define mp_invmod(a, b, c)           ltc_mp.invmod(a, b, c)
+diff -Nur libtomcrypt-1.16-orig/src/headers/tomcrypt_pk.h libtomcrypt-1.16/src/headers/tomcrypt_pk.h
+--- libtomcrypt-1.16-orig/src/headers/tomcrypt_pk.h	2006-12-16 20:08:40.000000000 +0100
++++ libtomcrypt-1.16/src/headers/tomcrypt_pk.h	2007-09-04 19:01:31.000000000 +0200
+@@ -143,6 +143,49 @@
+                         
+ #endif
+ 
++/* ---- DH Routines ---- */
++#ifdef MDH 
++
++typedef struct Dh_key {
++    int idx, type;
++    void *x;
++    void *y;
++} dh_key;
++
++int dh_compat_test(void);
++void dh_sizes(int *low, int *high);
++int dh_get_size(dh_key *key);
++
++int dh_make_key(prng_state *prng, int wprng, int keysize, dh_key *key);
++void dh_free(dh_key *key);
++
++int dh_export(unsigned char *out, unsigned long *outlen, int type, dh_key *key);
++int dh_import(const unsigned char *in, unsigned long inlen, dh_key *key);
++
++int dh_shared_secret(dh_key        *private_key, dh_key        *public_key,
++                     unsigned char *out,         unsigned long *outlen);
++
++int dh_encrypt_key(const unsigned char *in,    unsigned long  keylen,
++                         unsigned char *out,   unsigned long *outlen, 
++                         prng_state    *prng,  int wprng, int hash, 
++                         dh_key        *key);
++
++int dh_decrypt_key(const unsigned char *in,  unsigned long  inlen, 
++                         unsigned char *out, unsigned long *outlen, 
++                         dh_key *key);
++
++int dh_sign_hash(const unsigned char *in,   unsigned long inlen,
++                       unsigned char *out,  unsigned long *outlen,
++                       prng_state    *prng, int wprng, dh_key *key);
++
++int dh_verify_hash(const unsigned char *sig,  unsigned long siglen,
++                   const unsigned char *hash, unsigned long hashlen, 
++                   int *stat, dh_key *key);
++
++
++#endif
++
++
+ /* ---- ECC Routines ---- */
+ #ifdef MECC
+ 
+diff -Nur libtomcrypt-1.16-orig/src/math/gmp_desc.c libtomcrypt-1.16/src/math/gmp_desc.c
+--- libtomcrypt-1.16-orig/src/math/gmp_desc.c	2006-12-16 20:08:40.000000000 +0100
++++ libtomcrypt-1.16/src/math/gmp_desc.c	2007-09-05 17:57:20.000000000 +0200
+@@ -305,6 +305,28 @@
+    return CRYPT_OK;
+ }
+ 
++static int addmod(void *a, void *b, void *c, void *d)
++{
++   LTC_ARGCHK(a != NULL);
++   LTC_ARGCHK(b != NULL);
++   LTC_ARGCHK(c != NULL);
++   LTC_ARGCHK(d != NULL);
++   mpz_add(d, a, b);
++   mpz_mod(d, d, c);
++   return CRYPT_OK;
++}
++
++static int submod(void *a, void *b, void *c, void *d)
++{
++   LTC_ARGCHK(a != NULL);
++   LTC_ARGCHK(b != NULL);
++   LTC_ARGCHK(c != NULL);
++   LTC_ARGCHK(d != NULL);
++   mpz_sub(d, a, b);
++   mpz_mod(d, d, c);
++   return CRYPT_OK;
++}
++
+ static int mulmod(void *a, void *b, void *c, void *d)
+ {
+    LTC_ARGCHK(a != NULL);
+@@ -427,6 +449,8 @@
+    &gcd,
+    &lcm,
+ 
++   &addmod,
++   &submod,
+    &mulmod,
+    &sqrmod,
+    &invmod,
+diff -Nur libtomcrypt-1.16-orig/src/math/ltm_desc.c libtomcrypt-1.16/src/math/ltm_desc.c
+--- libtomcrypt-1.16-orig/src/math/ltm_desc.c	2006-12-16 20:08:40.000000000 +0100
++++ libtomcrypt-1.16/src/math/ltm_desc.c	2007-09-05 12:28:38.000000000 +0200
+@@ -308,6 +308,24 @@
+    return mpi_to_ltc_error(mp_lcm(a, b, c));
+ }
+ 
++static int addmod(void *a, void *b, void *c, void *d)
++{
++   LTC_ARGCHK(a != NULL);
++   LTC_ARGCHK(b != NULL);
++   LTC_ARGCHK(c != NULL);
++   LTC_ARGCHK(d != NULL);
++   return mpi_to_ltc_error(mp_addmod(a,b,c,d));
++}
++
++static int submod(void *a, void *b, void *c, void *d)
++{
++   LTC_ARGCHK(a != NULL);
++   LTC_ARGCHK(b != NULL);
++   LTC_ARGCHK(c != NULL);
++   LTC_ARGCHK(d != NULL);
++   return mpi_to_ltc_error(mp_submod(a,b,c,d));
++}
++
+ static int mulmod(void *a, void *b, void *c, void *d)
+ {
+    LTC_ARGCHK(a != NULL);
+@@ -433,6 +451,8 @@
+    &gcd,
+    &lcm,
+ 
++   &addmod,
++   &submod,
+    &mulmod,
+    &sqrmod,
+    &invmod,
+diff -Nur libtomcrypt-1.16-orig/src/math/tfm_desc.c libtomcrypt-1.16/src/math/tfm_desc.c
+--- libtomcrypt-1.16-orig/src/math/tfm_desc.c	2006-12-16 20:08:40.000000000 +0100
++++ libtomcrypt-1.16/src/math/tfm_desc.c	2007-09-05 17:01:22.000000000 +0200
+@@ -319,6 +319,24 @@
+    return CRYPT_OK;
+ }
+ 
++static int addmod(void *a, void *b, void *c, void *d)
++{
++   LTC_ARGCHK(a != NULL);
++   LTC_ARGCHK(b != NULL);
++   LTC_ARGCHK(c != NULL);
++   LTC_ARGCHK(d != NULL);
++   return tfm_to_ltc_error(fp_addmod(a,b,c,d));
++}
++
++static int submod(void *a, void *b, void *c, void *d)
++{
++   LTC_ARGCHK(a != NULL);
++   LTC_ARGCHK(b != NULL);
++   LTC_ARGCHK(c != NULL);
++   LTC_ARGCHK(d != NULL);
++   return tfm_to_ltc_error(fp_submod(a,b,c,d));
++}
++
+ static int mulmod(void *a, void *b, void *c, void *d)
+ {
+    LTC_ARGCHK(a != NULL);
+@@ -721,6 +739,8 @@
+    &gcd,
+    &lcm,
+ 
++   &addmod,
++   &submod,
+    &mulmod,
+    &sqrmod,
+    &invmod,
+diff -Nur libtomcrypt-1.16-orig/src/pk/dh/dh.c libtomcrypt-1.16/src/pk/dh/dh.c
+--- libtomcrypt-1.16-orig/src/pk/dh/dh.c	1970-01-01 01:00:00.000000000 +0100
++++ libtomcrypt-1.16/src/pk/dh/dh.c	2007-09-05 18:39:28.000000000 +0200
+@@ -0,0 +1,606 @@
++/* LibTomCrypt, modular cryptographic library -- Tom St Denis
++ *
++ * LibTomCrypt is a library that provides various cryptographic
++ * algorithms in a highly modular and flexible manner.
++ *
++ * The library is free for all purposes without any express
++ * guarantee it works.
++ *
++ * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.org
++ */
++#include "tomcrypt.h"
++
++/**
++  @file dh.c
++  DH crypto, Tom St Denis
++*/
++  
++#ifdef MDH
++
++   /* size of a packet header in bytes */
++    #define PACKET_SIZE            4
++
++    /* Section tags */
++    #define PACKET_SECT_DH         1
++
++    /* Subsection Tags for the first three sections */
++    #define PACKET_SUB_KEY         0
++    #define PACKET_SUB_ENCRYPTED   1
++    #define PACKET_SUB_SIGNED      2
++    #define PACKET_SUB_ENC_KEY     3
++
++#define OUTPUT_BIGNUM(num, out, y, z)                                                             \
++{                                                                                                 \
++      if ((y + 4) > *outlen) { return CRYPT_BUFFER_OVERFLOW; }                                    \
++      z = (unsigned long)mp_unsigned_bin_size(num);                                               \
++      STORE32L(z, out+y);                                                                         \
++      y += 4;                                                                                     \
++      if ((y + z) > *outlen) { return CRYPT_BUFFER_OVERFLOW; }                                    \
++      if ((err = mp_to_unsigned_bin(num, out+y)) != CRYPT_OK) { return err; }    \
++      y += z;                                                                                     \
++}
++
++#define INPUT_BIGNUM(num, in, x, y, inlen)                       \
++{                                                                \
++     /* load value */                                            \
++     if ((y + 4) > inlen) {                                      \
++        err = CRYPT_INVALID_PACKET;                              \
++        goto error;                                              \
++     }                                                           \
++     LOAD32L(x, in+y);                                           \
++     y += 4;                                                     \
++                                                                 \
++     /* sanity check... */                                       \
++     if ((x+y) > inlen) {                                        \
++        err = CRYPT_INVALID_PACKET;                              \
++        goto error;                                              \
++     }                                                           \
++                                                                 \
++     /* load it */                                               \
++     if ((err = mp_read_unsigned_bin(num, (unsigned char *)in+y, (int)x)) != CRYPT_OK) {\
++        goto error;                                              \
++     }                                                           \
++     y += x;                                                     \
++}
++
++static void packet_store_header(unsigned char *dst, int section, int subsection)
++{
++   LTC_ARGCHK(dst != NULL);
++
++   /* store version number */
++   dst[0] = (unsigned char)(CRYPT&255);
++   dst[1] = (unsigned char)((CRYPT>>8)&255);
++
++   /* store section and subsection */
++   dst[2] = (unsigned char)(section & 255);
++   dst[3] = (unsigned char)(subsection & 255);
++
++}
++
++static int packet_valid_header(unsigned char *src, int section, int subsection)
++{
++   unsigned long ver;
++
++   LTC_ARGCHK(src != NULL);
++
++   /* check version */
++   ver = ((unsigned long)src[0]) | ((unsigned long)src[1] << 8U);
++   if (CRYPT < ver) {
++      return CRYPT_INVALID_PACKET;
++   }
++
++   /* check section and subsection */
++   if (section != (int)src[2] || subsection != (int)src[3]) {
++      return CRYPT_INVALID_PACKET;
++   }
++
++   return CRYPT_OK;
++}
++
++
++/* max export size we'll encounter (smaller than this but lets round up a bit) */
++#define DH_BUF_SIZE 1200
++
++/* This holds the key settings.  ***MUST*** be organized by size from smallest to largest. */
++static const struct {
++    int size;
++    char *name, *base, *prime;
++} sets[] = {
++#ifdef DH768
++{
++   96,
++   "DH-768",
++   "4",
++   "F///////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "//////m3wvV"
++},
++#endif
++#ifdef DH1024
++{
++   128,
++   "DH-1024",
++   "4",
++   "F///////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////m3C47"
++},
++#endif
++#ifdef DH1280
++{
++   160,
++   "DH-1280",
++   "4",
++   "F///////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "//////////////////////////////m4kSN"
++},
++#endif
++#ifdef DH1536
++{
++   192,
++   "DH-1536",
++   "4",
++   "F///////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////m5uqd"
++},
++#endif
++#ifdef DH1792
++{
++   224,
++   "DH-1792",
++   "4",
++   "F///////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "//////////////////////////////////////////////////////mT/sd"
++},
++#endif
++#ifdef DH2048
++{
++   256,
++   "DH-2048",
++   "4",
++   "3///////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "/////////////////////////////////////////m8MPh"
++},
++#endif
++#ifdef DH2560
++{
++   320,
++   "DH-2560",
++   "4",
++   "3///////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "/////mKFpF"
++},
++#endif
++#ifdef DH3072
++{
++   384,
++   "DH-3072",
++   "4",
++   "3///////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "/////////////////////////////m32nN"
++},
++#endif
++#ifdef DH4096
++{
++   512,
++   "DH-4096",
++   "4",
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "////////////////////////////////////////////////////////////"
++   "/////////////////////m8pOF"
++},
++#endif
++{
++   0,
++   NULL,
++   NULL,
++   NULL
++}
++};
++
++static int is_valid_idx(int n)
++{
++   int x;
++
++   for (x = 0; sets[x].size; x++);
++   if ((n < 0) || (n >= x)) {
++      return 0;
++   }
++   return 1;
++}
++
++/**
++   Test the DH sub-system (can take a while)
++   @return CRYPT_OK if successful
++*/
++int dh_compat_test(void)
++{
++    void *p, *g, *tmp;
++    int x, err, primality;
++
++    if ((err = mp_init_multi(&p, &g, &tmp, NULL)) != CRYPT_OK)                 { goto error; }
++
++    for (x = 0; sets[x].size != 0; x++) {
++#if 0
++        printf("dh_test():testing size %d-bits\n", sets[x].size * 8);
++#endif
++        if ((err = mp_read_radix(g,(char *)sets[x].base, 64)) != CRYPT_OK)    { goto error; }
++        if ((err = mp_read_radix(p,(char *)sets[x].prime, 64)) != CRYPT_OK)   { goto error; }
++
++        /* ensure p is prime */
++        if ((err = mp_prime_is_prime(p, 8, &primality)) != CRYPT_OK)                     { goto done; }
++        if (primality != LTC_MP_YES ) {
++           err = CRYPT_FAIL_TESTVECTOR;
++           goto done;
++        }
++
++        if ((err = mp_sub_d(p, 1, tmp)) != CRYPT_OK)                         { goto error; }
++        if ((err = mp_div_2(tmp, tmp)) != CRYPT_OK)                          { goto error; }
++
++        /* ensure (p-1)/2 is prime */
++        if ((err = mp_prime_is_prime(tmp, 8, &primality)) != CRYPT_OK)                   { goto done; }
++        if (primality == 0) {
++           err = CRYPT_FAIL_TESTVECTOR;
++           goto done;
++        }
++
++        /* now see if g^((p-1)/2) mod p is in fact 1 */
++        if ((err = mp_exptmod(g, tmp, p, tmp)) != CRYPT_OK)                { goto error; }
++        if (mp_cmp_d(tmp, 1)) {
++           err = CRYPT_FAIL_TESTVECTOR;
++           goto done;
++        }
++    }
++    err = CRYPT_OK;
++error:
++done:
++    mp_clear_multi(tmp, g, p, NULL);
++    return err;
++}
++
++/**
++   Get the min and max DH key sizes (octets)
++   @param low    [out] The smallest key size supported
++   @param high   [out] The largest key size supported
++*/
++void dh_sizes(int *low, int *high)
++{
++   int x;
++   LTC_ARGCHK(low != NULL);
++   LTC_ARGCHK(high != NULL);
++   *low  = INT_MAX;
++   *high = 0;
++   for (x = 0; sets[x].size != 0; x++) {
++       if (*low > sets[x].size)  *low  = sets[x].size;
++       if (*high < sets[x].size) *high = sets[x].size;
++   }
++}
++
++/**
++  Returns the key size of a given DH key (octets)
++  @param key   The DH key to get the size of
++  @return The size if valid or INT_MAX if not
++*/
++int dh_get_size(dh_key *key)
++{
++    LTC_ARGCHK(key != NULL);
++    if (is_valid_idx(key->idx) == 1) {
++        return sets[key->idx].size;
++    } else {
++        return INT_MAX; /* large value that would cause dh_make_key() to fail */
++    }
++}
++
++/**
++  Make a DH key [private key pair]
++  @param prng     An active PRNG state
++  @param wprng    The index for the PRNG you desire to use
++  @param keysize  The key size (octets) desired
++  @param key      [out] Where the newly created DH key will be stored
++  @return CRYPT_OK if successful, note: on error all allocated memory will be freed automatically.
++*/
++int dh_make_key(prng_state *prng, int wprng, int keysize, dh_key *key)
++{
++   unsigned char *buf;
++   unsigned long x;
++   void *p, *g;
++   int err;
++
++   LTC_ARGCHK(key  != NULL);
++
++   /* good prng? */
++   if ((err = prng_is_valid(wprng)) != CRYPT_OK) {
++      return err;
++   }
++
++   /* find key size */
++   for (x = 0; (keysize > sets[x].size) && (sets[x].size != 0); x++);
++#ifdef FAST_PK
++   keysize = MIN(sets[x].size, 32);
++#else
++   keysize = sets[x].size;
++#endif
++   if (sets[x].size == 0) {
++      return CRYPT_INVALID_KEYSIZE;
++   }
++   key->idx = x;
++
++   /* allocate buffer */
++   buf = XMALLOC(keysize);
++   if (buf == NULL) {
++      return CRYPT_MEM;
++   }
++
++   /* make up random string */
++   if ( rng_make_prng( keysize, wprng, prng, NULL) != CRYPT_OK) {
++      err = CRYPT_ERROR_READPRNG; 
++      goto error2;
++   }
++
++   if (prng_descriptor[wprng].read(buf, keysize, prng) != (unsigned long)keysize) {
++      err = CRYPT_ERROR_READPRNG; 
++      goto error2;
++   }
++
++   /* init parameters */
++   if ((err = mp_init_multi(&g, &p, &key->x, &key->y, NULL)) != CRYPT_OK) {
++      goto error;
++   }
++
++   if ((err = mp_read_radix(g, sets[key->idx].base, 64)) != CRYPT_OK)      { goto error; }
++   if ((err = mp_read_radix(p, sets[key->idx].prime, 64)) != CRYPT_OK)     { goto error; }
++
++   /* load the x value */
++   if ((err = mp_read_unsigned_bin(key->x, buf, keysize)) != CRYPT_OK)     { goto error; }
++   if ((err = mp_exptmod(g, key->x, p, key->y)) != CRYPT_OK)            { goto error; }
++   key->type = PK_PRIVATE;
++
++   /* free up ram */
++   err = CRYPT_OK;
++   goto done;
++error:
++   mp_clear_multi(key->x, key->y, NULL);
++done:
++   mp_clear_multi(p, g, NULL);
++error2:
++#ifdef LTC_CLEAN_STACK
++   zeromem(buf, keysize);
++#endif
++   XFREE(buf);
++   return err;
++}
++
++/**
++  Free the allocated ram for a DH key
++  @param key   The key which you wish to free
++*/ 
++void dh_free(dh_key *key)
++{
++   LTC_ARGCHK(key != NULL);
++   if ( key->x ) {
++		mp_clear( key->x );
++		key->x = NULL;
++   }
++   if ( key->y ) {
++        mp_clear( key->y );
++		key->y = NULL;
++   }
++}
++
++/**
++  Export a DH key to a binary packet
++  @param out    [out] The destination for the key
++  @param outlen [in/out] The max size and resulting size of the DH key
++  @param type   Which type of key (PK_PRIVATE or PK_PUBLIC)
++  @param key    The key you wish to export
++  @return CRYPT_OK if successful
++*/
++int dh_export(unsigned char *out, unsigned long *outlen, int type, dh_key *key)
++{
++   unsigned long y, z;
++   int err;
++
++   LTC_ARGCHK(out    != NULL);
++   LTC_ARGCHK(outlen != NULL);
++   LTC_ARGCHK(key    != NULL);
++
++   /* can we store the static header?  */
++   if (*outlen < (PACKET_SIZE + 2)) {
++      return CRYPT_BUFFER_OVERFLOW;
++   }
++   
++   if (type == PK_PRIVATE && key->type != PK_PRIVATE) {
++      return CRYPT_PK_NOT_PRIVATE;
++   }
++
++   /* header */
++   y = PACKET_SIZE;
++
++   /* header */
++   out[y++] = type;
++   out[y++] = (unsigned char)(sets[key->idx].size / 8);
++
++   /* export y */
++   OUTPUT_BIGNUM(key->y, out, y, z);
++
++   if (type == PK_PRIVATE) {
++      /* export x */
++      OUTPUT_BIGNUM(key->x, out, y, z);
++   }
++
++   /* store header */
++   packet_store_header(out, PACKET_SECT_DH, PACKET_SUB_KEY);
++
++   /* store len */
++   *outlen = y;
++   return CRYPT_OK;
++}
++
++/**
++  Import a DH key from a binary packet
++  @param in     The packet to read
++  @param inlen  The length of the input packet
++  @param key    [out] Where to import the key to
++  @return CRYPT_OK if successful, on error all allocated memory is freed automatically
++*/
++int dh_import(const unsigned char *in, unsigned long inlen, dh_key *key)
++{
++   unsigned long x, y, s;
++   int err;
++
++   LTC_ARGCHK(in  != NULL);
++   LTC_ARGCHK(key != NULL);
++
++   /* make sure valid length */
++   if ((2+PACKET_SIZE) > inlen) {
++      return CRYPT_INVALID_PACKET;
++   }
++
++   /* check type byte */
++   if ((err = packet_valid_header((unsigned char *)in, PACKET_SECT_DH, PACKET_SUB_KEY)) != CRYPT_OK) {
++      return err;
++   }
++
++   /* init */
++   if ((err = mp_init_multi(&key->x, &key->y, NULL)) != CRYPT_OK) {
++      return err;
++   }
++
++   /* advance past packet header */
++   y = PACKET_SIZE;
++
++   /* key type, e.g. private, public */
++   key->type = (int)in[y++];
++
++   /* key size in bytes */
++   s  = (unsigned long)in[y++] * 8;
++
++   for (x = 0; (s > (unsigned long)sets[x].size) && (sets[x].size != 0); x++);
++   if (sets[x].size == 0) {
++      err = CRYPT_INVALID_KEYSIZE;
++      goto error;
++   }
++   key->idx = (int)x;
++
++   /* type check both values */
++   if ((key->type != PK_PUBLIC) && (key->type != PK_PRIVATE))  {
++      err = CRYPT_PK_TYPE_MISMATCH;
++      goto error;
++   }
++
++   /* is the key idx valid? */
++   if (is_valid_idx(key->idx) != 1) {
++      err = CRYPT_PK_TYPE_MISMATCH;
++      goto error;
++   }
++
++   /* load public value g^x mod p*/
++   INPUT_BIGNUM(key->y, in, x, y, inlen);
++
++   if (key->type == PK_PRIVATE) {
++      INPUT_BIGNUM(key->x, in, x, y, inlen);
++   }
++
++   /* eliminate private key if public */
++   if (key->type == PK_PUBLIC) {
++      mp_clear(key->x);
++      key->x = NULL;
++   }
++
++   return CRYPT_OK;
++error:
++   mp_clear_multi(key->y, key->x, NULL);
++   return err;
++}
++
++/**
++   Create a DH shared secret.
++   @param private_key     The private DH key in the pair
++   @param public_key      The public DH key in the pair 
++   @param out             [out] The destination of the shared data
++   @param outlen          [in/out] The max size and resulting size of the shared data.
++   @return CRYPT_OK if successful
++*/
++int dh_shared_secret(dh_key *private_key, dh_key *public_key,
++                     unsigned char *out, unsigned long *outlen)
++{
++   void *tmp, *p;
++   unsigned long x;
++   int err;
++
++   LTC_ARGCHK(private_key != NULL);
++   LTC_ARGCHK(public_key  != NULL);
++   LTC_ARGCHK(out         != NULL);
++   LTC_ARGCHK(outlen      != NULL);
++
++   /* types valid? */
++   if (private_key->type != PK_PRIVATE) {
++      return CRYPT_PK_NOT_PRIVATE;
++   }
++
++   /* same idx? */
++   if (private_key->idx != public_key->idx) {
++      return CRYPT_PK_TYPE_MISMATCH;
++   }
++
++   /* compute y^x mod p */
++   if ((err = mp_init_multi(&tmp, &p, NULL)) != CRYPT_OK) {
++      return err;
++   }
++
++   if ((err = mp_read_radix(p, (char *)sets[private_key->idx].prime, 64)) != CRYPT_OK)     { goto error; }
++   if ((err = mp_exptmod(public_key->y, private_key->x, p, tmp)) != CRYPT_OK)           { goto error; }
++
++   /* enough space for output? */
++   x = (unsigned long)mp_unsigned_bin_size(tmp);
++   if (*outlen < x) {
++      err = CRYPT_BUFFER_OVERFLOW;
++      goto done;
++   }
++   if ((err = mp_to_unsigned_bin(tmp, out)) != CRYPT_OK)                                   { goto error; }
++   *outlen = x;
++   err = CRYPT_OK;
++   goto done;
++error:
++done:
++   mp_clear_multi(p, tmp, NULL);
++   return err;
++}
++
++#include "dh_sys.c"
++
++#endif
+diff -Nur libtomcrypt-1.16-orig/src/pk/dh/dh_sys.c libtomcrypt-1.16/src/pk/dh/dh_sys.c
+--- libtomcrypt-1.16-orig/src/pk/dh/dh_sys.c	1970-01-01 01:00:00.000000000 +0100
++++ libtomcrypt-1.16/src/pk/dh/dh_sys.c	2007-09-04 19:33:51.000000000 +0200
+@@ -0,0 +1,491 @@
++/* LibTomCrypt, modular cryptographic library -- Tom St Denis
++ *
++ * LibTomCrypt is a library that provides various cryptographic
++ * algorithms in a highly modular and flexible manner.
++ *
++ * The library is free for all purposes without any express
++ * guarantee it works.
++ *
++ * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.org
++ */
++
++/**
++  @file dh_sys.c
++  DH Crypto, Tom St Denis
++*/
++  
++/**
++  Encrypt a short symmetric key with a public DH key
++  @param in        The symmetric key to encrypt
++  @param inlen     The length of the key (octets)
++  @param out       [out] The ciphertext
++  @param outlen    [in/out]  The max size and resulting size of the ciphertext
++  @param prng      An active PRNG state
++  @param wprng     The index of the PRNG desired
++  @param hash      The index of the hash desired (must produce a digest of size >= the size of the plaintext)
++  @param key       The public key you wish to encrypt with.
++  @return CRYPT_OK if successful
++*/
++int dh_encrypt_key(const unsigned char *in,   unsigned long inlen,
++                         unsigned char *out,  unsigned long *outlen,
++                         prng_state *prng, int wprng, int hash,
++                         dh_key *key)
++{
++    unsigned char *pub_expt, *dh_shared, *skey;
++    dh_key        pubkey;
++    unsigned long x, y, z, hashsize, pubkeysize;
++    int           err;
++
++    LTC_ARGCHK(in != NULL);
++    LTC_ARGCHK(out   != NULL);
++    LTC_ARGCHK(outlen   != NULL);
++    LTC_ARGCHK(key   != NULL);
++
++    /* check that wprng/hash are not invalid */
++    if ((err = prng_is_valid(wprng)) != CRYPT_OK) {
++       return err;
++    }
++
++    if ((err = hash_is_valid(hash)) != CRYPT_OK) {
++       return err;
++    }
++
++    if (inlen > hash_descriptor[hash].hashsize)  {
++        return CRYPT_INVALID_HASH;
++    }
++
++    /* allocate memory */
++    pub_expt  = XMALLOC(DH_BUF_SIZE);
++    dh_shared = XMALLOC(DH_BUF_SIZE);
++    skey      = XMALLOC(MAXBLOCKSIZE);
++    if (pub_expt == NULL || dh_shared == NULL || skey == NULL) {
++       if (pub_expt != NULL) {
++          XFREE(pub_expt);
++       }
++       if (dh_shared != NULL) {
++          XFREE(dh_shared);
++       }
++       if (skey != NULL) {
++          XFREE(skey);
++       }
++       return CRYPT_MEM;
++    }
++
++    /* make a random key and export the public copy */
++    if ((err = dh_make_key(prng, wprng, dh_get_size(key), &pubkey)) != CRYPT_OK) {
++       goto LBL_ERR;
++    }
++
++    pubkeysize = DH_BUF_SIZE;
++    if ((err = dh_export(pub_expt, &pubkeysize, PK_PUBLIC, &pubkey)) != CRYPT_OK) {
++       dh_free(&pubkey);
++       goto LBL_ERR;
++    }
++
++    /* now check if the out buffer is big enough */
++    if (*outlen < (1 + 4 + 4 + PACKET_SIZE + pubkeysize + inlen)) {
++       dh_free(&pubkey);
++       err = CRYPT_BUFFER_OVERFLOW;
++       goto LBL_ERR;
++    }
++
++    /* make random key */
++    hashsize  = hash_descriptor[hash].hashsize;
++
++    x = DH_BUF_SIZE;
++    if ((err = dh_shared_secret(&pubkey, key, dh_shared, &x)) != CRYPT_OK) {
++       dh_free(&pubkey);
++       goto LBL_ERR;
++    }
++    dh_free(&pubkey);
++
++    z = MAXBLOCKSIZE;
++    if ((err = hash_memory(hash, dh_shared, x, skey, &z)) != CRYPT_OK) {
++       goto LBL_ERR;
++    }
++
++    /* store header */
++    packet_store_header(out, PACKET_SECT_DH, PACKET_SUB_ENC_KEY);
++
++    /* output header */
++    y = PACKET_SIZE;
++
++    /* size of hash name and the name itself */
++    out[y++] = hash_descriptor[hash].ID;
++
++    /* length of DH pubkey and the key itself */
++    STORE32L(pubkeysize, out+y);
++    y += 4;
++    for (x = 0; x < pubkeysize; x++, y++) {
++        out[y] = pub_expt[x];
++    }
++
++    /* Store the encrypted key */
++    STORE32L(inlen, out+y);
++    y += 4;
++
++    for (x = 0; x < inlen; x++, y++) {
++      out[y] = skey[x] ^ in[x];
++    }
++    *outlen = y;
++
++    err = CRYPT_OK;
++LBL_ERR:
++#ifdef LTC_CLEAN_STACK
++    /* clean up */
++    zeromem(pub_expt,  DH_BUF_SIZE);
++    zeromem(dh_shared, DH_BUF_SIZE);
++    zeromem(skey,      MAXBLOCKSIZE);
++#endif
++    XFREE(skey);
++    XFREE(dh_shared);
++    XFREE(pub_expt);
++
++    return err;
++}
++
++/**
++   Decrypt a DH encrypted symmetric key
++   @param in       The DH encrypted packet
++   @param inlen    The length of the DH encrypted packet
++   @param out      The plaintext
++   @param outlen   [in/out]  The max size and resulting size of the plaintext
++   @param key      The private DH key corresponding to the public key that encrypted the plaintext
++   @return CRYPT_OK if successful
++*/
++int dh_decrypt_key(const unsigned char *in, unsigned long inlen,
++                         unsigned char *out, unsigned long *outlen, 
++                         dh_key *key)
++{
++   unsigned char *shared_secret, *skey;
++   unsigned long  x, y, z, hashsize, keysize;
++   int            hash, err;
++   dh_key         pubkey;
++
++   LTC_ARGCHK(in     != NULL);
++   LTC_ARGCHK(out != NULL);
++   LTC_ARGCHK(outlen != NULL);
++   LTC_ARGCHK(key    != NULL);
++
++   /* right key type? */
++   if (key->type != PK_PRIVATE) {
++      return CRYPT_PK_NOT_PRIVATE;
++   }
++
++   /* allocate ram */
++   shared_secret = XMALLOC(DH_BUF_SIZE);
++   skey          = XMALLOC(MAXBLOCKSIZE);
++   if (shared_secret == NULL || skey == NULL) {
++      if (shared_secret != NULL) {
++         XFREE(shared_secret);
++      }
++      if (skey != NULL) {
++         XFREE(skey);
++      }
++      return CRYPT_MEM;
++   }
++
++   /* check if initial header should fit */
++   if (inlen < PACKET_SIZE+1+4+4) {
++      err =  CRYPT_INVALID_PACKET;
++      goto LBL_ERR;
++   } else {
++      inlen -= PACKET_SIZE+1+4+4;
++   }
++
++   /* is header correct? */
++   if ((err = packet_valid_header((unsigned char *)in, PACKET_SECT_DH, PACKET_SUB_ENC_KEY)) != CRYPT_OK)  {
++      goto LBL_ERR;
++   }
++
++   /* now lets get the hash name */
++   y = PACKET_SIZE;
++   hash = find_hash_id(in[y++]);
++   if (hash == -1) {
++      err = CRYPT_INVALID_HASH;
++      goto LBL_ERR;
++   }
++
++   /* common values */
++   hashsize  = hash_descriptor[hash].hashsize;
++
++   /* get public key */
++   LOAD32L(x, in+y);
++   
++   /* now check if the imported key will fit */
++   if (inlen < x) {
++      err = CRYPT_INVALID_PACKET;
++      goto LBL_ERR;
++   } else {
++      inlen -= x;
++   }
++   
++   y += 4;
++   if ((err = dh_import(in+y, x, &pubkey)) != CRYPT_OK) {
++      goto LBL_ERR;
++   }
++   y += x;
++
++   /* make shared key */
++   x = DH_BUF_SIZE;
++   if ((err = dh_shared_secret(key, &pubkey, shared_secret, &x)) != CRYPT_OK) {
++      dh_free(&pubkey);
++      goto LBL_ERR;
++   }
++   dh_free(&pubkey);
++
++   z = MAXBLOCKSIZE;
++   if ((err = hash_memory(hash, shared_secret, x, skey, &z)) != CRYPT_OK) {
++      goto LBL_ERR;
++   }
++
++   /* load in the encrypted key */
++   LOAD32L(keysize, in+y);
++   
++   /* will the out fit as part of the input */
++   if (inlen < keysize) {
++      err = CRYPT_INVALID_PACKET;
++      goto LBL_ERR;
++   } else {
++      inlen -= keysize;
++   }
++   
++   if (keysize > *outlen) {
++       err = CRYPT_BUFFER_OVERFLOW;
++       goto LBL_ERR;
++   }
++   y += 4;
++
++   *outlen = keysize;
++
++   for (x = 0; x < keysize; x++, y++) {
++      out[x] = skey[x] ^ in[y];
++   }
++
++   err = CRYPT_OK;
++LBL_ERR:
++#ifdef LTC_CLEAN_STACK
++   zeromem(shared_secret, DH_BUF_SIZE);
++   zeromem(skey,          MAXBLOCKSIZE);
++#endif
++
++   XFREE(skey);
++   XFREE(shared_secret);
++
++   return err;
++}
++
++/* perform an ElGamal Signature of a hash 
++ *
++ * The math works as follows.  x is the private key, M is the message to sign
++ 
++ 1.  pick a random k
++ 2.  compute a = g^k mod p
++ 3.  compute b = (M - xa)/k mod p
++ 4.  Send (a,b)
++ 
++ Now to verify with y=g^x mod p, a and b
++ 
++ 1.  compute y^a * a^b = g^(xa) * g^(k*(M-xa)/k)
++                       = g^(xa + (M - xa))
++                       = g^M [all mod p]
++                       
++ 2.  Compare against g^M mod p [based on input hash].
++ 3.  If result of #2 == result of #1 then signature valid 
++*/
++
++/**
++  Sign a message digest using a DH private key 
++  @param in      The data to sign
++  @param inlen   The length of the input (octets)
++  @param out     [out] The destination of the signature
++  @param outlen  [in/out] The max size and resulting size of the output
++  @param prng    An active PRNG state
++  @param wprng   The index of the PRNG desired
++  @param key     A private DH key
++  @return CRYPT_OK if successful
++*/
++int dh_sign_hash(const unsigned char *in,  unsigned long inlen,
++                       unsigned char *out, unsigned long *outlen,
++                       prng_state *prng, int wprng, dh_key *key)
++{
++   void         *a, *b, *k, *m, *g, *p, *p1, *tmp;
++   unsigned char *buf;
++   unsigned long  x, y;
++   int            err;
++
++   LTC_ARGCHK(in     != NULL);
++   LTC_ARGCHK(out    != NULL);
++   LTC_ARGCHK(outlen != NULL);
++   LTC_ARGCHK(key    != NULL);
++
++   /* check parameters */
++   if (key->type != PK_PRIVATE) {
++      return CRYPT_PK_NOT_PRIVATE;
++   }
++
++   if ((err = prng_is_valid(wprng)) != CRYPT_OK) {
++      return err;
++   }
++
++   /* is the IDX valid ?  */
++   if (is_valid_idx(key->idx) != 1) {
++      return CRYPT_PK_INVALID_TYPE;
++   }
++
++   /* allocate ram for buf */
++   buf = XMALLOC(520);
++
++   /* make up a random value k,
++    * since the order of the group is prime
++    * we need not check if gcd(k, r) is 1 
++    */
++   if (prng_descriptor[wprng].read(buf, sets[key->idx].size, prng) != 
++       (unsigned long)(sets[key->idx].size)) {
++      err = CRYPT_ERROR_READPRNG;
++      goto LBL_ERR;
++   }
++
++   /* init bignums */
++   if ((err = mp_init_multi(&a, &b, &k, &m, &p, &g, &p1, &tmp, NULL)) != CRYPT_OK) { 
++      goto LBL_ERR;
++   }
++
++   /* load k and m */
++   if ((err = mp_read_unsigned_bin(m, (unsigned char *)in, inlen)) != CRYPT_OK)        { goto error; }
++   if ((err = mp_read_unsigned_bin(k, buf, sets[key->idx].size)) != CRYPT_OK)          { goto error; }
++
++   /* load g, p and p1 */
++   if ((err = mp_read_radix(g, sets[key->idx].base, 64)) != CRYPT_OK)               { goto error; }
++   if ((err = mp_read_radix(p, sets[key->idx].prime, 64)) != CRYPT_OK)              { goto error; }
++   if ((err = mp_sub_d(p, 1, p1)) != CRYPT_OK)                                     { goto error; }
++   if ((err = mp_div_2(p1, p1)) != CRYPT_OK)                                       { goto error; } /* p1 = (p-1)/2 */
++
++   /* now get a = g^k mod p */
++   if ((err = mp_exptmod(g, k, p, a)) != CRYPT_OK)                               { goto error; }
++
++   /* now find M = xa + kb mod p1 or just b = (M - xa)/k mod p1 */
++   if ((err = mp_invmod(k, p1, k)) != CRYPT_OK)                                   { goto error; } /* k = 1/k mod p1 */
++   if ((err = mp_mulmod(a, key->x, p1, tmp)) != CRYPT_OK)                        { goto error; } /* tmp = xa */
++   if ((err = mp_submod(m, tmp, p1, tmp)) != CRYPT_OK)                           { goto error; } /* tmp = M - xa */
++   if ((err = mp_mulmod(k, tmp, p1, b)) != CRYPT_OK)                             { goto error; } /* b = (M - xa)/k */
++   
++   /* check for overflow */
++   if ((unsigned long)(PACKET_SIZE + 4 + 4 + mp_unsigned_bin_size(a) + mp_unsigned_bin_size(b)) > *outlen) {
++      err = CRYPT_BUFFER_OVERFLOW;
++      goto LBL_ERR;
++   }
++   
++   /* store header  */
++   y = PACKET_SIZE;
++
++   /* now store them both (a,b) */
++   x = (unsigned long)mp_unsigned_bin_size(a);
++   STORE32L(x, out+y);  y += 4;
++   if ((err = mp_to_unsigned_bin(a, out+y)) != CRYPT_OK)                            { goto error; }
++   y += x;
++
++   x = (unsigned long)mp_unsigned_bin_size(b);
++   STORE32L(x, out+y);  y += 4;
++   if ((err = mp_to_unsigned_bin(b, out+y)) != CRYPT_OK)                            { goto error; }
++   y += x;
++
++   /* check if size too big */
++   if (*outlen < y) {
++      err = CRYPT_BUFFER_OVERFLOW;
++      goto LBL_ERR;
++   }
++
++   /* store header */
++   packet_store_header(out, PACKET_SECT_DH, PACKET_SUB_SIGNED);
++   *outlen = y;
++
++   err = CRYPT_OK;
++   goto LBL_ERR;
++error:
++LBL_ERR:
++   mp_clear_multi(tmp, p1, g, p, m, k, b, a, NULL);
++
++   XFREE(buf);
++
++   return err;
++}
++
++
++/**
++   Verify the signature given
++   @param sig        The signature
++   @param siglen     The length of the signature (octets)
++   @param hash       The hash that was signed
++   @param hashlen    The length of the hash (octets)
++   @param stat       [out] Result of signature comparison, 1==valid, 0==invalid
++   @param key        The public DH key that signed the hash
++   @return CRYPT_OK if succsessful (even if signature is invalid)
++*/
++int dh_verify_hash(const unsigned char *sig, unsigned long siglen,
++                   const unsigned char *hash, unsigned long hashlen, 
++                         int *stat, dh_key *key)
++{
++   void        *a, *b, *p, *g, *m, *tmp;
++   unsigned long x, y;
++   int           err;
++
++   LTC_ARGCHK(sig  != NULL);
++   LTC_ARGCHK(hash != NULL);
++   LTC_ARGCHK(stat != NULL);
++   LTC_ARGCHK(key  != NULL);
++
++   /* default to invalid */
++   *stat = 0;
++
++   /* check initial input length */
++   if (siglen < PACKET_SIZE+4+4) {
++      return CRYPT_INVALID_PACKET;
++   } 
++
++   /* header ok? */
++   if ((err = packet_valid_header((unsigned char *)sig, PACKET_SECT_DH, PACKET_SUB_SIGNED)) != CRYPT_OK) {
++      return err;
++   }
++   
++   /* get hash out of packet */
++   y = PACKET_SIZE;
++
++   /* init all bignums */
++   if ((err = mp_init_multi(&a, &p, &b, &g, &m, &tmp, NULL)) != CRYPT_OK) { 
++      return err;
++   }
++
++   /* load a and b */
++   INPUT_BIGNUM(a, sig, x, y, siglen);
++   INPUT_BIGNUM(b, sig, x, y, siglen);
++
++   /* load p and g */
++   if ((err = mp_read_radix(p, sets[key->idx].prime, 64)) != CRYPT_OK)              { goto error1; }
++   if ((err = mp_read_radix(g, sets[key->idx].base, 64)) != CRYPT_OK)               { goto error1; }
++
++   /* load m */
++   if ((err = mp_read_unsigned_bin(m, (unsigned char *)hash, hashlen)) != CRYPT_OK) { goto error1; }
++
++   /* find g^m mod p */
++   if ((err = mp_exptmod(g, m, p, m)) != CRYPT_OK)                { goto error1; } /* m = g^m mod p */
++
++   /* find y^a * a^b */
++   if ((err = mp_exptmod(key->y, a, p, tmp)) != CRYPT_OK)         { goto error1; } /* tmp = y^a mod p */
++   if ((err = mp_exptmod(a, b, p, a)) != CRYPT_OK)                { goto error1; } /* a = a^b mod p */
++   if ((err = mp_mulmod(a, tmp, p, a)) != CRYPT_OK)               { goto error1; } /* a = y^a * a^b mod p */
++
++   /* y^a * a^b == g^m ??? */
++   if (mp_cmp(a, m) == 0) {
++      *stat = 1;
++   }
++
++   /* clean up */
++   err = CRYPT_OK;
++   goto done;
++error1:
++error:
++done:
++   mp_clear_multi(tmp, m, g, p, b, a, NULL);
++   return err;
++}
+diff -Nur libtomcrypt-1.16-orig/testprof/dh_test.c libtomcrypt-1.16/testprof/dh_test.c
+--- libtomcrypt-1.16-orig/testprof/dh_test.c	1970-01-01 01:00:00.000000000 +0100
++++ libtomcrypt-1.16/testprof/dh_test.c	2007-09-05 18:01:27.000000000 +0200
+@@ -0,0 +1,122 @@
++#include <tomcrypt_test.h>
++
++#ifdef MDH 
++
++#ifdef DH4096
++#define KEYSIZE 4096
++#else
++#define KEYSIZE 2048
++#endif
++
++int dh_test (void)
++{
++  unsigned char buf[3][4096];
++  unsigned long x, y, z;
++  int           stat, stat2;
++  dh_key        usera, userb;
++  prng_state yarrow_prng;
++
++   if (register_prng(&yarrow_desc) == -1) {
++      printf("Error registering yarrow PRNG\n");
++      exit(-1);
++   }
++   if (register_hash(&md5_desc) == -1) {
++      printf("Error registering md5 hash\n");
++      exit(-1);
++   }
++   
++  DO(dh_compat_test());
++
++
++  /* make up two keys */
++  DO(dh_make_key (&yarrow_prng, find_prng ("yarrow"), KEYSIZE/8, &usera));
++  DO(dh_make_key (&yarrow_prng, find_prng ("yarrow"), KEYSIZE/8, &userb));
++
++  /* make the shared secret */
++  x = KEYSIZE;
++  DO(dh_shared_secret (&usera, &userb, buf[0], &x));
++
++  y = KEYSIZE;
++  DO(dh_shared_secret (&userb, &usera, buf[1], &y));
++  if (y != x) {
++    fprintf(stderr, "DH Shared keys are not same size.\n");
++    dh_free (&usera);
++    dh_free (&userb);
++    return 1;
++  }
++  if (memcmp (buf[0], buf[1], x)) {
++    fprintf(stderr, "DH Shared keys not same contents.\n");
++    dh_free (&usera);
++    dh_free (&userb);
++    return 1;
++  }
++
++  /* now export userb */
++  y = KEYSIZE;
++  DO(dh_export (buf[1], &y, PK_PUBLIC, &userb));
++  dh_free (&userb);
++
++  /* import and make the shared secret again */
++  DO(dh_import (buf[1], y, &userb));
++  z = KEYSIZE;
++  DO(dh_shared_secret (&usera, &userb, buf[2], &z));
++
++  dh_free (&usera);
++  dh_free (&userb);
++
++  if (z != x) {
++    fprintf(stderr, "failed.  Size don't match?\n");
++    return 1;
++  }
++  if (memcmp (buf[0], buf[2], x)) {
++    fprintf(stderr, "Failed.  Content didn't match.\n");
++    return 1;
++  }
++
++/* test encrypt_key */
++  dh_make_key (&yarrow_prng, find_prng ("yarrow"), KEYSIZE/8, &usera);
++  for (x = 0; x < 16; x++) {
++    buf[0][x] = x;
++  }
++  y = sizeof (buf[1]);
++  DO(dh_encrypt_key (buf[0], 16, buf[1], &y, &yarrow_prng, find_prng ("yarrow"), find_hash ("md5"), &usera));
++  zeromem (buf[0], sizeof (buf[0]));
++  x = sizeof (buf[0]);
++  DO(dh_decrypt_key (buf[1], y, buf[0], &x, &usera));
++  if (x != 16) {
++    fprintf(stderr, "Failed (length)\n");
++    dh_free (&usera);
++    return 1;
++  }
++  for (x = 0; x < 16; x++)
++    if (buf[0][x] != x) {
++      fprintf(stderr, "Failed (contents)\n");
++      dh_free (&usera);
++      return 1;
++    }
++
++/* test sign_hash */
++  for (x = 0; x < 16; x++) {
++     buf[0][x] = x;
++  }
++  x = sizeof (buf[1]);
++  DO(dh_sign_hash (buf[0], 16, buf[1], &x, &yarrow_prng, find_prng ("yarrow"), &usera));
++  DO(dh_verify_hash (buf[1], x, buf[0], 16, &stat, &usera));
++  buf[0][0] ^= 1;
++  DO(dh_verify_hash (buf[1], x, buf[0], 16, &stat2, &usera));
++  dh_free (&usera);
++  if (!(stat == 1 && stat2 == 0)) { 
++     fprintf(stderr, "dh_sign/verify_hash %d %d", stat, stat2);
++     return 1;
++  }
++  return 0;
++}
++#else
++
++int dh_test(void)
++{
++   fprintf(stderr, "NOP");
++   return 0;
++}
++
++#endif
+diff -Nur libtomcrypt-1.16-orig/testprof/makefile libtomcrypt-1.16/testprof/makefile
+--- libtomcrypt-1.16-orig/testprof/makefile	2006-12-16 20:08:40.000000000 +0100
++++ libtomcrypt-1.16/testprof/makefile	2007-09-04 18:54:15.000000000 +0200
+@@ -7,7 +7,7 @@
+ 
+ OBJECTS = base64_test.o cipher_hash_test.o der_tests.o                                   \
+ dsa_test.o ecc_test.o mac_test.o modes_test.o pkcs_1_test.o rsa_test.o                   \
+-store_test.o test_driver.o x86_prof.o katja_test.o
++store_test.o test_driver.o x86_prof.o katja_test.o dh_test.o
+ 
+ ifndef LIBTEST_S
+    LIBTEST_S=libtomcrypt_prof.a
+diff -Nur libtomcrypt-1.16-orig/testprof/tomcrypt_test.h libtomcrypt-1.16/testprof/tomcrypt_test.h
+--- libtomcrypt-1.16-orig/testprof/tomcrypt_test.h	2006-12-16 20:08:40.000000000 +0100
++++ libtomcrypt-1.16/testprof/tomcrypt_test.h	2007-09-05 17:02:31.000000000 +0200
+@@ -32,6 +32,7 @@
+ int pkcs_1_test(void);
+ int store_test(void);
+ int rsa_test(void);
++int dh_test(void);
+ int katja_test(void);
+ int ecc_tests(void);
+ int dsa_test(void);

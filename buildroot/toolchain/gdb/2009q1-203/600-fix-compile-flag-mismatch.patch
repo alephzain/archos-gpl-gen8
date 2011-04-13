@@ -1,0 +1,42 @@
+--- gdb-stable/gdb/configure.orig	2009-05-20 23:45:44.000000000 +0200
++++ gdb-stable/gdb/configure	2009-06-25 18:42:16.000000000 +0200
+@@ -310,7 +310,7 @@
+ #endif"
+ 
+ gl_header_list=
+-ac_subdirs_all="$ac_subdirs_all doc testsuite"
++ac_subdirs_all="$ac_subdirs_all doc"
+ ac_subdirs_all="$ac_subdirs_all gdbtk"
+ ac_subdirs_all="$ac_subdirs_all multi-ice"
+ ac_subdirs_all="$ac_subdirs_all gdbserver"
+@@ -7140,7 +7140,7 @@
+ 
+ 
+ 
+-subdirs="$subdirs doc testsuite"
++subdirs="$subdirs doc"
+ 
+ 
+ # Check whether to support alternative target configurations
+--- gdb-stable/gdb/gdbserver/configure.orig	2009-05-20 23:45:42.000000000 +0200
++++ gdb-stable/gdb/gdbserver/configure	2009-06-25 18:43:21.000000000 +0200
+@@ -1251,7 +1251,7 @@
+         # differences in whitespace do not lead to failure.
+         ac_old_val_w=`echo x $ac_old_val`
+         ac_new_val_w=`echo x $ac_new_val`
+-        if test "$ac_old_val_w" != "$ac_new_val_w"; then
++        if test "`echo $ac_old_val`" != "`echo $ac_new_val`"; then
+           { echo "$as_me:$LINENO: error: \`$ac_var' has changed since the previous run:" >&5
+ echo "$as_me: error: \`$ac_var' has changed since the previous run:" >&2;}
+           ac_cache_corrupted=:
+--- gdb-stable/gdb/testsuite/configure.orig	2009-05-20 23:45:38.000000000 +0200
++++ gdb-stable/gdb/testsuite/configure	2009-06-25 18:43:45.000000000 +0200
+@@ -1253,7 +1253,7 @@
+         # differences in whitespace do not lead to failure.
+         ac_old_val_w=`echo x $ac_old_val`
+         ac_new_val_w=`echo x $ac_new_val`
+-        if test "$ac_old_val_w" != "$ac_new_val_w"; then
++        if test "`echo $ac_old_val`" != "`echo $ac_new_val`"; then
+           { echo "$as_me:$LINENO: error: \`$ac_var' has changed since the previous run:" >&5
+ echo "$as_me: error: \`$ac_var' has changed since the previous run:" >&2;}
+           ac_cache_corrupted=:

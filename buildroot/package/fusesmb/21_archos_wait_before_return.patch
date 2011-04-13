@@ -1,0 +1,14 @@
+--- a/cache.c	2011-03-22 14:21:47.350395369 +0100
++++ b/cache.c	2011-03-22 14:21:24.045139142 +0100
+@@ -815,8 +815,10 @@
+         pid = fork();
+         if (pid < 0)
+             exit(EXIT_FAILURE);
+-        if (pid > 0)
++        if (pid > 0){
++			waitpid(pid,NULL,0);
+             exit(EXIT_SUCCESS);
++		}
+ 
+         sid = setsid();
+         if (sid < 0) {

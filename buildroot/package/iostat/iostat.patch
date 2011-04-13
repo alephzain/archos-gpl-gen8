@@ -1,0 +1,15 @@
+Les fichiers binaires iostat-2.2-orig//iostat et iostat-2.2/iostat sont différents.
+diff -ruN iostat-2.2-orig//iostat.c iostat-2.2/iostat.c
+--- iostat-2.2-orig//iostat.c	2010-12-13 11:55:25.000000000 +0100
++++ iostat-2.2/iostat.c	2010-12-13 10:39:30.000000000 +0100
+@@ -140,7 +140,9 @@
+ 
+ 	handle_error("Can't open /proc/cpuinfo", !ncpufp);
+ 	while (fgets(buffer, sizeof(buffer), ncpufp)) {
+-		if (!strncmp(buffer, "processor\t", 11))
++		if (!strncmp(buffer, "processor\t", 10))
++			ncpu++;
++		if (!strncmp(buffer, "Processor\t", 10))
+ 			ncpu++;
+ 	}
+ 	fclose(ncpufp);

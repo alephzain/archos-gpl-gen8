@@ -1,0 +1,40 @@
+Index: Python-2.7/setup.py
+===================================================================
+--- Python-2.7.orig/setup.py	(révision 84276)
++++ Python-2.7/setup.py	(copie de travail)
+@@ -21,8 +21,16 @@
+ COMPILED_WITH_PYDEBUG = hasattr(sys, 'gettotalrefcount')
+ 
+ # This global variable is used to hold the list of modules to be disabled.
+-disabled_module_list = []
++try:
++    disabled_module_list = os.environ["PYTHON_DISABLE_MODULES"].split()
++except KeyError:
++    disabled_module_list = list()
+ 
++try:
++    disable_ssl = os.environ["PYTHON_DISABLE_SSL"]
++except KeyError:
++    disable_ssl = 0
++
+ def add_dir_to_list(dirlist, dir):
+     """Add the directory 'dir' to the list 'dirlist' (at the front) if
+     1) 'dir' is not already in 'dirlist'
+@@ -346,6 +354,7 @@
+         return sys.platform
+ 
+     def detect_modules(self):
++        global disable_ssl
+         try:
+             modules_include_dirs = os.environ["PYTHON_MODULES_INCLUDE"].split()
+         except KeyError:
+@@ -688,7 +697,8 @@
+                                      ] )
+ 
+         if (ssl_incs is not None and
+-            ssl_libs is not None):
++            ssl_libs is not None and
++            not disable_ssl):
+             exts.append( Extension('_ssl', ['_ssl.c'],
+                                    include_dirs = ssl_incs,
+                                    library_dirs = ssl_libs,

@@ -1,0 +1,8 @@
+config BR2_PACKAGE_LIBUSB1
+	bool "libusb1"
+	default n
+	help
+	  Userspace library for accessing USB devices
+	  libusb-1.0 is an almost-rewrite of the previous stable branch, libusb-0.1.
+
+	  http://www.libusb.org/wiki/Libusb1.0

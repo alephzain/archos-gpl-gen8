@@ -1,0 +1,7 @@
+config BR2_PACKAGE_PROFTPD_STATIC
+	bool "proftpd-static"
+	default n
+	help
+	  ProFTPD, a highly configurable FTP server.
+
+	  This will use a statically-built version (compiled with GCC 4.4.0).

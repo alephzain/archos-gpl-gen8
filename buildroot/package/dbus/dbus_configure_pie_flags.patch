@@ -1,0 +1,15 @@
+--- dbus-1.1.20/configure	2008-11-13 14:59:20.000000000 +0100
++++ dbus-1.1.20_patched/configure	2008-11-13 14:56:35.000000000 +0100
+@@ -5599,8 +5599,10 @@
+   case " $CFLAGS " in
+   *[\ \	]-fPIE[\ \	]*) ;;
+   *) if cc_supports_flag -fPIE; then
+-        PIE_CFLAGS="-fPIE"
+-        PIE_LDFLAGS="-pie -Wl,-z,relro"
++        #PIE_CFLAGS="-fPIE"
++        #PIE_LDFLAGS="-pie -Wl,-z,relro"
++	PIE_CFLAGS=
++	PIE_LDFLAGS=
+      fi
+      ;;
+   esac

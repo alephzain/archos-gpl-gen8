@@ -1,0 +1,19 @@
+--- a/libtinymail-camel/tny-camel-send-queue.c
++++ b/libtinymail-camel/tny-camel-send-queue.c
+@@ -576,6 +576,7 @@
+ {
+ 	MainThreadInfo *info = (MainThreadInfo *) data;
+ 	TnySendQueue *self = info->self;
++	g_object_ref(self);
+ 	TnyCamelSendQueuePriv *priv = TNY_CAMEL_SEND_QUEUE_GET_PRIVATE (self);
+ 	guint i = 0, length = 0;
+ 	TnyList *list = NULL;
+@@ -821,6 +822,8 @@
+ 	/* Emit the queue-stop signal */
+ 	emit_queue_control_signals (self, TNY_SEND_QUEUE_STOP);
+ 
++	g_object_unref(self);
++
+ 	return NULL;
+ }
+ 

@@ -1,0 +1,7 @@
+config BR2_PACKAGE_SDPARM
+	bool "sdparm"
+	default n
+	help
+	  sdparm - get/set hard disk parameters for SCSI drives.
+
+	  http://sg.torque.net/sg/sdparm.html

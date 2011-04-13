@@ -1,0 +1,45 @@
+--- a/djmount/device_list.c	2010-10-01 14:18:33.000000000 +0200
++++ b/djmount/device_list.c	2010-10-01 14:15:18.000000000 +0200
+@@ -43,7 +43,10 @@
+ #include <upnp/ithread.h>
+ #include <upnp/upnptools.h>
+ #include <upnp/LinkedList.h>
+-
++#define DEVICE_INFO_FILE "description.xml"
++#define PATH_TO_UPNPD_PREPARE "/system/bin/prepare_upnpd"
++#define PATH_TO_SERVER_ROOT "/tmp/web/"
++static UpnpDevice_Handle device;
+ 
+ 
+ // How often to check advertisement and subscription timeouts for devices
+@@ -956,6 +959,7 @@
+ DeviceList_Start (const char* ssdp_target, 
+ 		  DeviceList_EventCallback eventCallback)
+ {
++	char desc_doc_url[250] = {0};
+ 	// Cf. AddDevice : only some SSDP target are implemented 
+ 	if (ssdp_target == NULL || 
+ 	    (strcmp (ssdp_target, "ssdp:all") != 0 &&
+@@ -1013,6 +1017,14 @@
+ 	Log_Printf (LOG_DEBUG, "Control Point Registered" );
+ 	
+ 	g_ssdp_target = talloc_strdup (NULL, ssdp_target);
++	snprintf(desc_doc_url, 250, "http://%s:%d/%s", ip_address, port, DEVICE_INFO_FILE);
++	Log_Printf (LOG_DEBUG,"upnp_prepare.sh = %d",system(PATH_TO_UPNPD_PREPARE));
++	UpnpSetWebServerRootDir(PATH_TO_SERVER_ROOT);
++	UpnpRegisterRootDevice(desc_doc_url, EventHandlerCallback, &device, &device);
++	UpnpSendAdvertisement(device, "360");
++	UpnpIsWebserverEnabled();
++
++
+ 	DeviceList_RefreshAll (true);
+ 	
+ 	// start a timer thread
+@@ -1041,6 +1053,7 @@
+ 	g_ssdp_target = NULL;
+ 
+ 	UpnpUnRegisterClient (g_ctrlpt_handle);
++	UpnpUnRegisterRootDevice(device);
+ 	rc = UpnpFinish();
+ 	
+ 	ListDestroy (&GlobalDeviceList, /*freeItem=>*/ 0);

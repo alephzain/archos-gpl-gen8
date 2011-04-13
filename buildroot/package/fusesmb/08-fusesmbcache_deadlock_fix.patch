@@ -1,0 +1,532 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/cache.c fusesmb-0.8.7/cache.c
+--- fusesmb-0.8.7.orig/cache.c	2009-04-01 12:31:39.000000000 +0200
++++ fusesmb-0.8.7/cache.c	2009-04-01 12:31:39.000000000 +0200
+@@ -32,6 +32,7 @@
+ #include <sys/types.h>
+ #include <unistd.h>
+ #include <signal.h>
++#include <sys/wait.h>
+ 
+ #include "stringlist.h"
+ #include "smbctx.h"
+@@ -46,6 +47,161 @@
+ #define MAX_SERVERLEN 255
+ #define MAX_WGLEN 255
+ 
++static pthread_t shutdown_thread;
++static int shutdown_requested = 0;
++
++static pthread_mutex_t startup_mutex;
++static pthread_cond_t count_cv;
++static pthread_cond_t go_cv;
++static unsigned int num_threads_waiting = 0;
++
++static pthread_mutex_t ctx_mutex = PTHREAD_MUTEX_INITIALIZER;
++
++static pthread_mutex_t mylock = PTHREAD_MUTEX_INITIALIZER;
++#define LOCK_CHILD_LIST		pthread_mutex_lock(&mylock)
++#define UNLOCK_CHILD_LIST	pthread_mutex_unlock(&mylock)
++
++// ripped from uclibc popen.c
++struct popen_list_item {
++	struct popen_list_item *next;
++	FILE *f;
++	pid_t pid;
++};
++
++static struct popen_list_item *popen_list /* = NULL (bss initialized) */;
++
++static FILE *apopen(const char *command, const char *modes)
++{
++	FILE *fp;
++	struct popen_list_item *pi;
++	struct popen_list_item *po;
++	int pipe_fd[2];
++	int parent_fd;
++	int child_fd;
++	volatile int child_writing;			/* Doubles as the desired child fildes. */
++	pid_t pid;
++
++	child_writing = 0;			/* Assume child is writing. */
++	if (modes[0] != 'w') {			/* Parent not writing... */
++		++child_writing;		/* so child must be writing. */
++		if (modes[0] != 'r') {		/* Oops!  Parent not reading either! */
++			goto RET_NULL;
++		}
++	}
++
++	if (!(pi = malloc(sizeof(struct popen_list_item)))) {
++		goto RET_NULL;
++	}
++
++	if (pipe(pipe_fd)) {
++		goto FREE_PI;
++	}
++
++	child_fd = pipe_fd[child_writing];
++	parent_fd = pipe_fd[1-child_writing];
++
++	if (!(fp = fdopen(parent_fd, modes))) {
++		close(parent_fd);
++		close(child_fd);
++		goto FREE_PI;
++	}
++
++	//VFORK_LOCK;
++	if ((pid = vfork()) == 0) {	/* Child of vfork... */
++		close(parent_fd);
++		if (child_fd != child_writing) {
++			dup2(child_fd, child_writing);
++			close(child_fd);
++		}
++
++		/* SUSv3 requires that any previously popen()'d streams in the
++		 * parent shall be closed in the child. */
++		for (po = popen_list ; po ; po = po->next) {
++			close(fileno(po->f));
++		}
++
++		execl("/bin/sh", "sh", "-c", command, (char *)0);
++
++		/* SUSv3 mandates an exit code of 127 for the child if the
++		 * command interpreter can not be invoked. */
++		_exit(127);
++	}
++	//VFORK_UNLOCK;
++
++	/* We need to close the child filedes whether vfork failed or
++	 * it succeeded and we're in the parent. */
++	close(child_fd);
++
++	if (pid > 0) {				/* Parent of vfork... */
++		pi->pid = pid;
++		pi->f = fp;
++		//LOCK;
++		pi->next = popen_list;
++		popen_list = pi;
++		//UNLOCK;
++		
++		return fp;
++	}
++
++	/* If we get here, vfork failed. */
++	fclose(fp);					/* Will close parent_fd. */
++
++ FREE_PI:
++	free(pi);
++
++ RET_NULL:
++	return NULL;
++}
++
++static int apclose(FILE *stream)
++{
++	struct popen_list_item *p;
++	int stat;
++	pid_t pid;
++
++	/* First, find the list entry corresponding to stream and remove it
++	 * from the list.  Set p to the list item (NULL if not found). */
++	//LOCK;
++	if ((p = popen_list) != NULL) {
++		if (p->f == stream) {
++			popen_list = p->next;
++		} else {
++			struct popen_list_item *t;
++			do {
++				t = p;
++				if (!(p = t->next)) {
++					//__set_errno(EINVAL); /* Not required by SUSv3. */
++					break;
++				}
++				if (p->f == stream) {
++					t->next = p->next;
++					break;
++				}
++			} while (1);
++		}
++	}
++	//UNLOCK;
++
++	if (p) {
++		pid = p->pid;			/* Save the pid we need */
++		free(p);				/* and free the list item. */
++
++		fclose(stream);	/* The SUSv3 example code ignores the return. */
++
++		/* SUSv3 specificly requires that pclose not return before the child
++		 * terminates, in order to disallow pclose from returning on EINTR. */
++		do {
++			if (waitpid(pid, &stat, 0) >= 0) {
++				return stat;
++			}
++			if (errno != EINTR) {
++				break;
++			}
++		} while (1);
++	}
++
++	return -1;
++}
+ 
+ stringlist_t *cache;
+ pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+@@ -130,9 +286,14 @@
+     */
+     char wg_cmd[512];
+     snprintf(wg_cmd, 512, "nmblookup '%s'", wg);
+-    //fprintf(stderr, "%s\n", cmd);
+-    FILE *pipe;
+-    pipe = popen(wg_cmd, "r");
++
++    if ( shutdown_requested ) {
++        return -1;
++    }
++    LOCK_CHILD_LIST;
++    FILE *pipe = apopen(wg_cmd, "r");
++    UNLOCK_CHILD_LIST;
++
+     if (pipe == NULL)
+         return -1;
+ 
+@@ -142,7 +303,7 @@
+         return -1;
+     strcpy(ip_cmd, "nmblookup -A ");
+     int ip_cmd_len = strlen(ip_cmd);
+-    while (!feof(pipe))
++    while ( !ferror(pipe) && !feof(pipe))
+     {
+         /* Parse output that looks like this:
+         querying boerderie on 172.20.91.255
+@@ -151,8 +312,9 @@
+         172.20.88.213 boerderie<00>
+         */
+         char buf[4096];
+-        if (NULL == fgets(buf, 4096, pipe))
+-            continue;
++        if (NULL == fgets(buf, 4096, pipe)) {
++            break;
++        }
+ 
+         char *pip = buf;
+         /* Yes also include the space */
+@@ -181,7 +343,7 @@
+         */
+         strcat(ip_cmd, buf);
+     }
+-    pclose(pipe);
++    apclose(pipe);
+ 
+     if (strlen(ip_cmd) == 13)
+     {
+@@ -189,22 +351,30 @@
+         return 0;
+     }
+     debug("%s\n", ip_cmd);
+-    pipe = popen(ip_cmd, "r");
++
++    if ( shutdown_requested ) {
++        return -1;
++    }
++    LOCK_CHILD_LIST;
++    pipe = apopen(ip_cmd, "r");
++    UNLOCK_CHILD_LIST;
++
+     if (pipe == NULL)
+     {
+         free(ip_cmd);
+         return -1;
+     }
+ 
+-    while (!feof(pipe))
++    while ( !ferror(pipe) && !feof(pipe) )
+     {
+         char buf2[4096];
+         char buf[4096];
+         char ip[32];
+ 
+         char *start = buf;
+-        if (NULL == fgets(buf2, 4096, pipe))
+-            continue;
++        if (NULL == fgets(buf2, 4096, pipe)) {
++            break;
++        }
+         /* Parse following input:
+             Looking up status of 123.123.123.123
+                     SERVER          <00> -         B <ACTIVE>
+@@ -229,9 +399,8 @@
+             continue;
+         }
+ 
+-        while (!feof(pipe))
++        while ( !ferror(pipe) && !feof(pipe) )
+         {
+-
+             if (NULL == fgets(buf, 4096, pipe))
+                 break;
+             char *sep = buf;
+@@ -258,14 +427,13 @@
+         }
+ 
+     }
+-    pclose(pipe);
++    apclose(pipe);
+     free(ip_cmd);
+     return 0;
+ }
+ 
+ static int server_listing(SMBCCTX *ctx, stringlist_t *cache, const char *wg, const char *sv, const char *ip)
+ {
+-    //return 0;
+     char tmp_path[MAXPATHLEN] = "smb://";
+     if (ip != NULL)
+     {
+@@ -278,13 +446,13 @@
+ 
+     struct smbc_dirent *share_dirent;
+     SMBCFILE *dir;
+-    //SMBCCTX *ctx = fusesmb_new_context();
++    pthread_mutex_lock(&ctx_mutex);
+     dir = ctx->opendir(ctx, tmp_path);
+     if (dir == NULL)
+     {
+-	fprintf(stderr, "ctx->opendir failed (%s)\n", strerror(errno));
+-        //smbc_free_context(ctx, 1);
++        fprintf(stderr, "ctx->opendir failed (%s)\n", strerror(errno));
+         ctx->closedir(ctx, dir);
++        pthread_mutex_unlock(&ctx_mutex);
+         int len = strlen(wg)+ strlen(sv) + 3;
+         char tmp[len];
+         snprintf(tmp, len, "/%s/%s", wg, sv);
+@@ -319,21 +487,30 @@
+             pthread_mutex_unlock(&cache_mutex);
+             fprintf(stderr, "sl_add failed\n");
+             ctx->closedir(ctx, dir);
+-            //smbc_free_context(ctx, 1);
++            pthread_mutex_unlock(&ctx_mutex);
+             return -1;
+         }
+         pthread_mutex_unlock(&cache_mutex);
+ 
+     }
+     ctx->closedir(ctx, dir);
+-    //smbc_free_context(ctx, 1);
++    pthread_mutex_unlock(&ctx_mutex);
+     return 0;
+ }
+ 
+ static void *workgroup_listing_thread(void *args)
+ {
++    pthread_mutex_lock(&startup_mutex);
++    num_threads_waiting++;
++    pthread_cond_signal(&count_cv);
++    fprintf(stderr, "signaled...\n");
++    fprintf(stderr, "waiting for GO...\n");
++    pthread_cond_wait(&go_cv, &startup_mutex);
++    pthread_mutex_unlock(&startup_mutex);
++
++    fprintf(stderr, "workgroup_listing_thread starting to run\n");
++
+     char *wg = (char *)args;
+-    //SMBCCTX *ctx, stringlist_t *cache, hash_t *ip_cache, const char *wg
+ 
+     hash_t *ip_cache = hash_create(HASHCOUNT_T_MAX, NULL, NULL);
+     if (NULL == ip_cache)
+@@ -345,17 +522,20 @@
+         fprintf(stderr, "Malloc failed\n");
+         return NULL;
+     }
++
+     SMBCCTX *ctx = fusesmb_cache_new_context(&cfg);
+     SMBCFILE *dir;
+     char temp_path[MAXPATHLEN] = "smb://";
+     strcat(temp_path, wg);
+     debug("Looking up Workgroup: %s", wg);
+     struct smbc_dirent *server_dirent;
++    pthread_mutex_lock(&ctx_mutex);
+     dir = ctx->opendir(ctx, temp_path);
++
+     if (dir == NULL)
+     {
+         ctx->closedir(ctx, dir);
+-
++        pthread_mutex_unlock(&ctx_mutex);
+         goto use_popen;
+     }
+     while (NULL != (server_dirent = ctx->readdir(ctx, dir)))
+@@ -372,10 +552,10 @@
+ 
+     }
+     ctx->closedir(ctx, dir);
++    pthread_mutex_unlock(&ctx_mutex);
+ 
+ use_popen:
+ 
+-
+     nmblookup(wg, servers, ip_cache);
+     sl_casesort(servers);
+ 
+@@ -405,14 +585,12 @@
+             if (ignore == 1)
+                 continue;
+         }
+-
+         hnode_t *node = hash_lookup(ip_cache, sl_item(servers, i));
+         if (node == NULL)
+             server_listing(ctx, cache, wg, sl_item(servers, i), NULL);
+         else
+             server_listing(ctx, cache, wg, sl_item(servers, i), hnode_get(node));
+     }
+-
+     hscan_t sc;
+     hnode_t *n;
+     hash_scan_begin(&sc, ip_cache);
+@@ -431,10 +609,8 @@
+     return 0;
+ }
+ 
+-
+ int cache_servers(SMBCCTX *ctx)
+ {
+-    //SMBCCTX *ctx = fusesmb_new_context();
+     SMBCFILE *dir;
+     struct smbc_dirent *workgroup_dirent;
+ 
+@@ -442,14 +618,12 @@
+     cache = sl_init();
+     size_t i;
+ 
+-
+     dir = ctx->opendir(ctx, "smb://");
+ 
+     if (dir == NULL)
+     {
+         ctx->closedir(ctx, dir);
+         sl_free(cache);
+-        //smbc_free_context(ctx, 1);
+         return -1;
+     }
+ 
+@@ -460,9 +634,13 @@
+     pthread_attr_t thread_attr;
+     pthread_attr_init(&thread_attr);
+     pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_JOINABLE);
++    pthread_mutex_init(&startup_mutex, NULL);
++    pthread_cond_init(&count_cv, NULL);
++    pthread_cond_init(&go_cv, NULL);
+ 
+     unsigned int num_threads = 0;
+ 
++    pthread_mutex_lock(&ctx_mutex);
+     while (NULL != (workgroup_dirent = ctx->readdir(ctx, dir)) )
+     {
+         if (workgroup_dirent->namelen == 0 ||
+@@ -470,8 +648,6 @@
+         {
+             continue;
+         }
+-        //char wg[1024];
+-        //strncpy(wg, workgroup_dirent->name, 1024);
+         char *thread_arg = strdup(workgroup_dirent->name);
+ 
+         if (opts.ignore_workgroups != NULL)
+@@ -489,7 +665,7 @@
+         rc = pthread_create(&threads[num_threads],
+                              &thread_attr, workgroup_listing_thread,
+                              (void*)thread_arg);
+-        //workgroup_listing(ctx, cache, ip_cache, wg);
++
+         if (rc)
+         {
+             fprintf(stderr, "Failed to create thread for workgroup: %s\n", workgroup_dirent->name);
+@@ -500,8 +676,17 @@
+         threads = (pthread_t *)realloc(threads, (num_threads+1)*sizeof(pthread_t));
+     }
+     ctx->closedir(ctx, dir);
++    pthread_mutex_unlock(&ctx_mutex);
+ 
+-    //smbc_free_context(ctx, 1);
++    fprintf(stderr, "we have to wait for %i threads\n", num_threads);
++    pthread_mutex_lock(&startup_mutex);
++    while ( num_threads_waiting < num_threads ) {
++        pthread_cond_wait(&count_cv, &startup_mutex);
++        fprintf(stderr, "Condition signal received (%i/%i).\n", num_threads_waiting, num_threads);
++    }
++    pthread_mutex_unlock(&startup_mutex);
++    fprintf(stderr, "giving all threads a GO!\n");
++    pthread_cond_broadcast(&go_cv);
+ 
+     pthread_attr_destroy(&thread_attr);
+ 
+@@ -515,6 +700,9 @@
+         }
+     }
+     free(threads);
++    pthread_mutex_destroy(&startup_mutex);
++    pthread_cond_destroy(&count_cv);
++    pthread_cond_destroy(&go_cv);
+ 
+     sl_casesort(cache);
+     char cachefile[1024];
+@@ -551,6 +739,51 @@
+     return 0;
+ }
+ 
++static void *shutdown_check(void* arg)
++{
++    while ( !shutdown_requested ) {
++        usleep(500000);
++    }
++
++    LOCK_CHILD_LIST;
++    // walk the child list and kill'em all!
++    struct popen_list_item *cursor = popen_list;
++    while ( cursor ) {
++        if (kill(cursor->pid, SIGKILL)) {
++            //syslog(LOG_DEBUG, "kill(%i, SIGKILL) failed: %s", cursor->pid, strerror(errno));
++        }
++        cursor = cursor->next;
++    }
++    UNLOCK_CHILD_LIST;
++
++    return NULL;
++}
++
++static void shutdown_handler( int sig_id )
++{
++    if ( sig_id == SIGUSR1 ) {
++        shutdown_requested = 1;
++    }
++}
++
++static void install_shutdown_handler(void)
++{
++    struct sigaction act;
++    memset(&act, '\0', sizeof(struct sigaction));
++    act.sa_handler = shutdown_handler;
++    sigemptyset(&act.sa_mask);
++    if ( sigaction( SIGUSR1, &act, NULL ) < 0 ) {
++        fprintf(stderr, "failed to register the SIGUSR1 handler\n");
++        exit(EXIT_FAILURE);
++    }
++
++    int rc = pthread_create(&shutdown_thread, NULL, shutdown_check, NULL);
++    if ( rc ) {
++        fprintf(stderr, "failed to start the shutdown thread\n");
++        exit(EXIT_FAILURE);
++    }
++}
++
+ int main(int argc, char *argv[])
+ {
+     char pidfile[1024];
+@@ -615,6 +848,9 @@
+         close(STDOUT_FILENO);
+         close(STDERR_FILENO);
+     }
++
++    //install_shutdown_handler();
++
+     SMBCCTX *ctx = fusesmb_cache_new_context(&cfg);
+     cache_servers(ctx);
+     smbc_free_context(ctx, 1);

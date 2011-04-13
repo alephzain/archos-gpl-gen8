@@ -1,0 +1,10 @@
+--- wv-1.2.4/wvWare.c.orig	2009-01-15 16:02:56.000000000 +0100
++++ wv-1.2.4/wvWare.c	2009-01-15 16:03:13.000000000 +0100
+@@ -30,7 +30,6 @@
+ #include "getopt.h"
+ 
+ /* strdup isn't declared in <string.h> for `gcc -ansi'; declare it here */
+-extern char *strdup (const char *);
+ 
+ extern char *str_copy(char *d, size_t n, char *s);
+ extern char *str_append(char *d, size_t n, char *s);

@@ -1,0 +1,68 @@
+diff -Naur a/upnp/inc/upnp.h b/upnp/inc/upnp.h
+--- a/upnp/inc/upnp.h	2008-03-09 01:54:58.000000000 +0100
++++ b/upnp/inc/upnp.h	2010-12-20 15:07:46.000000000 +0100
+@@ -2390,9 +2390,9 @@
+ 	IN OUT int *httpStatus,	    /** The status returned on receiving a 
+ 				        response message from the remote 
+ 					server. */
+-	IN int lowRange,            /** An integer value representing the low 
++	IN off_t lowRange,            /** An integer value representing the low 
+ 				        end of a range to retrieve. */
+-	IN int highRange,           /** An integer value representing the high 
++	IN off_t highRange,           /** An integer value representing the high 
+ 				        end of a range to retrieve. */
+ 	IN int timeout	            /** A time out value sent with the request 
+ 				      	during which a response is expected 
+diff -Naur a/upnp/src/api/upnpapi.c b/upnp/src/api/upnpapi.c
+--- a/upnp/src/api/upnpapi.c	2008-04-10 18:17:35.000000000 +0200
++++ b/upnp/src/api/upnpapi.c	2010-12-20 15:07:46.000000000 +0100
+@@ -3139,8 +3139,8 @@
+                    IN OUT char **contentType,
+                    OUT int *contentLength,
+                    OUT int *httpStatus,
+-                   IN int lowRange,
+-                   IN int highRange,
++                   IN off_t lowRange,
++                   IN off_t highRange,
+                    IN int timeout )
+ {
+     return http_OpenHttpGetEx( url_str,
+diff -Naur a/upnp/src/genlib/net/http/httpreadwrite.c b/upnp/src/genlib/net/http/httpreadwrite.c
+--- a/upnp/src/genlib/net/http/httpreadwrite.c	2010-12-20 15:08:25.000000000 +0100
++++ b/upnp/src/genlib/net/http/httpreadwrite.c	2010-12-20 15:07:46.000000000 +0100
+@@ -2216,8 +2216,8 @@
+                     IN OUT char **contentType,
+                     OUT int *contentLength,
+                     OUT int *httpStatus,
+-                    IN int lowRange,
+-                    IN int highRange,
++                    IN off_t lowRange,
++                    IN off_t highRange,
+                     IN int timeout )
+ {
+     int http_error_code;
+@@ -2251,8 +2251,8 @@
+         }
+ 
+         memset( &rangeBuf, 0, sizeof( rangeBuf ) );
+-        sprintf( rangeBuf.RangeHeader, "Range: bytes=%d-%d\r\n",
+-                 lowRange, highRange );
++        sprintf( rangeBuf.RangeHeader, "Range: bytes=%llu-%llu\r\n",
++                 (unsigned long long)lowRange,(unsigned long long) highRange );
+ 
+         membuffer_init( &request );
+ 
+diff -Naur a/upnp/src/inc/httpreadwrite.h b/upnp/src/inc/httpreadwrite.h
+--- a/upnp/src/inc/httpreadwrite.h	2010-12-20 15:08:25.000000000 +0100
++++ b/upnp/src/inc/httpreadwrite.h	2010-12-20 15:07:46.000000000 +0100
+@@ -577,8 +577,8 @@
+ 		     IN OUT char **contentType,
+ 		     OUT int *contentLength,
+ 		     OUT int *httpStatus,
+-			 IN int lowRange,
+-			 IN int highRange,
++			 IN off_t lowRange,
++			 IN off_t highRange,
+ 		     IN int timeout);
+ 
+ 

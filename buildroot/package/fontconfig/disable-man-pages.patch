@@ -1,0 +1,23 @@
+--- fontconfig-2.4.2-orig/configure.in	2008-05-13 22:54:37.000000000 +0200
++++ fontconfig-2.4.2/configure.in	2008-05-14 10:06:46.000000000 +0200
+@@ -505,8 +505,6 @@
+ 
+ AC_CHECK_PROG(HASDOCBOOK, docbook2html, yes, no)
+ 
+-AM_CONDITIONAL(USEDOCBOOK, test "x$HASDOCBOOK" = xyes)
+-
+ default_docs="yes"
+ #
+ # Check if docs exist or can be created
+@@ -536,8 +534,11 @@
+ else
+ 	DOCSRC=""
+ 	DOCMAN3=""
++	HASDOCBOOK="no"
+ fi
+ 
++AM_CONDITIONAL(USEDOCBOOK, test "x$HASDOCBOOK" = xyes)
++
+ AC_SUBST(DOCSRC)
+ AC_SUBST(DOCMAN3)
+ 

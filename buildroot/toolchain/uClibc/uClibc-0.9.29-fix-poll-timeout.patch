@@ -1,0 +1,13 @@
+Index: libc/sysdeps/linux/common/poll.c
+===================================================================
+--- uClibc-0.9.29/libc/sysdeps/linux/common/poll.c	(revision 18692)
++++ uClibc-0.9.29/libc/sysdeps/linux/common/poll.c	(revision 18693)
+@@ -36,7 +36,7 @@
+ 	struct timespec *ts = NULL, tval;
+ 	if (timeout > 0) {
+ 		tval.tv_sec = timeout / 1000;
+-		tval.tv_nsec = (timeout % 1000) *1000;
++		tval.tv_nsec = (timeout % 1000) * 1000000;
+ 		ts = &tval;
+ 	}
+ 	return ppoll(fds, nfds, ts, NULL);

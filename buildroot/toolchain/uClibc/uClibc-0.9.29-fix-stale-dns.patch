@@ -1,0 +1,51 @@
+--- uClibc-0.9.29/libc/inet/resolv.c	2008-05-27 11:15:15.000000000 +0200
++++ uClibc-0.9.29/libc/inet/resolv.c.new	2008-05-27 11:17:06.000000000 +0200
+@@ -154,6 +154,7 @@
+ #include <arpa/nameser.h>
+ #include <sys/utsname.h>
+ #include <sys/un.h>
++#include <sys/stat.h>
+ #include <bits/uClibc_mutex.h>
+ 
+ __UCLIBC_MUTEX_EXTERN(__resolv_lock);
+@@ -1033,6 +1034,17 @@
+  *	unix systems, we can have a list of nameservers after the keyword.
+  */
+ 
++static time_t __nameservers_mtime;
++static time_t __file_mtime(const char* fname)
++{
++	struct stat buf;
++	
++	if (stat(fname, &buf) < 0)
++		return 0;
++		
++	return buf.st_mtime;
++}
++
+ void attribute_hidden __open_nameservers()
+ {
+ 	FILE *fp;
+@@ -1041,12 +1053,21 @@
+ 	char szBuffer[128], *p, *argv[RESOLV_ARGS];
+ 	int argc;
+ 	/* int rv = 0; */
++	time_t mt;
++
++	mt = __file_mtime("/etc/resolv.conf");
+ 
+ 	__UCLIBC_MUTEX_LOCK(__resolv_lock);
+-	if (__nameservers > 0) {
++	if (__nameservers > 0 && mt == __nameservers_mtime) {
+ 		goto DONE;
+ 	}
+ 
++	__UCLIBC_MUTEX_UNLOCK(__resolv_lock);
++	__close_nameservers();
++	__UCLIBC_MUTEX_LOCK(__resolv_lock);
++	
++	__nameservers_mtime = mt;
++	
+ 	if ((fp = fopen("/etc/resolv.conf", "r")) ||
+ 		(fp = fopen("/etc/config/resolv.conf", "r")))
+ 		{

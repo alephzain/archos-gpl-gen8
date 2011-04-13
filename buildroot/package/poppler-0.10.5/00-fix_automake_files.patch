@@ -1,0 +1,14 @@
+diff -urN -X /home/marc/dontdiff poppler-0.10.5.orig/glib/reference/Makefile.am poppler-0.10.5/glib/reference/Makefile.am
+--- poppler-0.10.5.orig/glib/reference/Makefile.am	2008-10-09 22:30:34.000000000 +0200
++++ poppler-0.10.5/glib/reference/Makefile.am	2009-04-03 11:37:39.000000000 +0200
+@@ -81,8 +81,8 @@
+ 
+ 
+ # This includes the standard gtk-doc make rules, copied by gtkdocize.
+-include $(top_srcdir)/gtk-doc.make
++#include $(top_srcdir)/gtk-doc.make
+ 
+ # Other files to distribute
+ # e.g. EXTRA_DIST += version.xml.in
+-EXTRA_DIST += 
++#EXTRA_DIST += 

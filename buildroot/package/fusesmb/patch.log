@@ -1,0 +1,230 @@
+------------------------------------------------------------------------
+r56011 | vapillon | 2008-12-18 17:51:50 +0100 (Thu, 18 Dec 2008) | 7 lines
+
+Gen6 "sub-trunk" for maintenance.
+Created at r56000.
+
+ - AX06_trunk is for Gen6
+ - trunk      is for Gen7
+
+
+------------------------------------------------------------------------
+r43210 | kurpiers | 2008-04-15 11:26:56 +0200 (Tue, 15 Apr 2008) | 5 lines
+
+from AX05.
+
+This issue with index/rindex is strange - it looks like "string.h/strings.h" is not taken from the right directory.
+
+
+------------------------------------------------------------------------
+r35290 | vapillon | 2007-11-07 11:20:42 +0100 (Wed, 07 Nov 2007) | 5 lines
+
+This branches is now the "trunk" for Gen5 development
+(1.7 for now)
+The actual trunk will now be used for Gen6 development.
+
+
+------------------------------------------------------------------------
+r13142 | frank | 2006-09-20 16:45:09 +0200 (Wed, 20 Sep 2006) | 5 lines
+
+Fix the new process based scanner. getpid() gives different results on NTPL (desktop)
+and LinuxThreads (target)...
+
+Also remove tmp files not cleaned up by previously aborted scanner processes.
+
+------------------------------------------------------------------------
+r12969 | frank | 2006-09-14 18:27:51 +0200 (Thu, 14 Sep 2006) | 6 lines
+
+Faster version of the smb scanner. The previous scanner was slow
+because it had to lock calls into the libsmbclient (which is inherently
+not-threadsafe). To get around this locking i rewrote the scanner to
+use processes instead of threads. The scanning results are
+aggregated with the help of some tmp files.
+
+------------------------------------------------------------------------
+r11968 | frank | 2006-08-25 13:03:36 +0200 (Fri, 25 Aug 2006) | 5 lines
+
+- Make the a process spawned by apopen a processgroupleader. The idea is that
+  when we kill this process all processes spawned by that process itself will receive
+  a signal.
+- Better logging
+
+------------------------------------------------------------------------
+r11963 | frank | 2006-08-25 13:01:24 +0200 (Fri, 25 Aug 2006) | 2 lines
+
+Better logging
+
+------------------------------------------------------------------------
+r11962 | frank | 2006-08-25 13:00:58 +0200 (Fri, 25 Aug 2006) | 5 lines
+
+-Bugfix: In the case that there are no smb-servers at all out at least
+an empty cache-file to disk so AVOS is happy.
+
+-Better logging
+
+------------------------------------------------------------------------
+r10881 | frank | 2006-08-02 10:23:56 +0200 (Wed, 02 Aug 2006) | 3 lines
+
+Another speed improvement. Do not try to convert servers from ips to names
+if allready know that the server string is not an ip-address.
+
+------------------------------------------------------------------------
+r10875 | frank | 2006-08-01 20:24:17 +0200 (Tue, 01 Aug 2006) | 7 lines
+
+- Bugfix: Workgroups were looked up two times in the case ctx->readdir worked for
+  a workgroup. This improved the time to run this program for our test network from
+  30seconds at best down to 15 seconds at best.
+- More logging
+- call _exit instead of exit() because i've seen a deadlook where two threads were
+  inside exit(). _exit doesn't call only handlers.
+
+------------------------------------------------------------------------
+r10575 | frank | 2006-07-25 11:50:23 +0200 (Tue, 25 Jul 2006) | 2 lines
+
+Somehow commited the wrong file on saturday...
+
+------------------------------------------------------------------------
+r10477 | frank | 2006-07-24 08:48:12 +0200 (Mon, 24 Jul 2006) | 3 lines
+
+Unbreak the build. Automake doesn't copy this file no longer
+when being run with --missing but does a symlink *sigh*
+
+------------------------------------------------------------------------
+r10475 | frank | 2006-07-22 16:17:44 +0200 (Sat, 22 Jul 2006) | 13 lines
+
+- Moved the code for apopen()/apclose()/ into a apopen.c
+- refactored some code into apopen_shutdown()
+- Have the a* functions do the locking on their own.
+
+- use sigwait() instead of a signal handler + polling of a variable.
+- write the pid of the thread (implemented as process) into the pidfile
+   so AVOS can signal the right process. (LinuxThreads aren't posix
+   conform in that. It shouldn't matte who get the signal. The NPLT
+   are doing the right thing.
+
+Still some work to be done in regards to shutting down on USB
+plugin.
+
+------------------------------------------------------------------------
+r10474 | frank | 2006-07-22 16:13:00 +0200 (Sat, 22 Jul 2006) | 7 lines
+
+Also use our custom version of popen()/pclose().
+After doing this i haven't seen hanging fusesmb.cache
+processes anymore.
+
+Tested around 30 runs under different load situations
+(samba uploading, audioplayer running, ...).
+
+------------------------------------------------------------------------
+r10468 | frank | 2006-07-22 16:08:26 +0200 (Sat, 22 Jul 2006) | 2 lines
+
+Had to rerun the autotools to fit in apopen.c
+
+------------------------------------------------------------------------
+r10465 | frank | 2006-07-22 16:07:46 +0200 (Sat, 22 Jul 2006) | 8 lines
+
+Contains a custom version of popen()/pclose()
+which give us access to the list of childs.
+
+When we wan't to shutdown all childs created we can call
+apopen_shutdown().
+
+Not quite ready yet.
+
+------------------------------------------------------------------------
+r10254 | frank | 2006-07-19 18:34:51 +0200 (Wed, 19 Jul 2006) | 17 lines
+
+Hopefully fixed some deadlock issues with the fusesmb.cache program.
+
+1. It called into libsmbclient (which isn't thread safe) from several
+    threads without any locking. Now there is a big fat lock. Doesn't make
+    it faster but i haven't seen any dead locks since than *knock*knock*
+2. There were problems when running popen in one thread was interleaved
+     with the creation of a new thread. That might be a side effect of 1.
+     but to be on the safe side if first create all threads needed and than
+     have them use popen.
+
+Also started to work on a better shutdown. If usb is plugged we need
+to kill all instances of fusesbm.cache and it's childs. Killing all childs
+was tricky because when using popen we can't access the pids.
+Basically i ripped the popen code from the uclibc giving us access
+to all the pids of all childs.
+This part is still work in progress and not activated.
+
+------------------------------------------------------------------------
+r9999 | welwarsky | 2006-07-14 10:44:22 +0200 (Fri, 14 Jul 2006) | 2 lines
+
+re-add
+
+------------------------------------------------------------------------
+r9997 | welwarsky | 2006-07-14 10:35:14 +0200 (Fri, 14 Jul 2006) | 2 lines
+
+remove generated file
+
+------------------------------------------------------------------------
+r9785 | frank | 2006-07-11 19:10:41 +0200 (Tue, 11 Jul 2006) | 2 lines
+
+Unbreak it.
+
+------------------------------------------------------------------------
+r9783 | frank | 2006-07-11 19:08:25 +0200 (Tue, 11 Jul 2006) | 2 lines
+
+Make the reloading of configs actually work.
+
+------------------------------------------------------------------------
+r9738 | frank | 2006-07-11 16:30:25 +0200 (Tue, 11 Jul 2006) | 6 lines
+
+bring the patch avx/builtroot/package/fusesmb/fusesmb_z5_non_browseable_shares.patch into
+this tree.
+
+Make host available with don't show any shares without authentification through
+the client. WinXP/2K default.
+
+------------------------------------------------------------------------
+r9732 | frank | 2006-07-11 16:06:24 +0200 (Tue, 11 Jul 2006) | 5 lines
+
+bring the patch avx/builtroot/package/fusesmb/fusesmb_z4_mkstemp.patch into
+this tree.
+
+fusesmb.cache used the mkstemp() call with wrong arguments.
+
+------------------------------------------------------------------------
+r9731 | frank | 2006-07-11 16:05:07 +0200 (Tue, 11 Jul 2006) | 6 lines
+
+bring the patch avx/builtroot/package/fusesmb/fusesmb_z3_cache_dead_or_alive.patch into
+this tree.
+
+Test if the fusesmb.cache program owning the pidfile is actually still alive.
+Better than checking the mtime of the pidfile.
+
+------------------------------------------------------------------------
+r9730 | frank | 2006-07-11 16:01:24 +0200 (Tue, 11 Jul 2006) | 5 lines
+
+bring the patch avx/builtroot/package/fusesmb/fusesmb_z1_invalid_fusesmb.cache_check.patch into
+this tree.
+
+The check for the fusesmb.cache program was wrong. We just assume it's in the current path.
+
+------------------------------------------------------------------------
+r9729 | frank | 2006-07-11 15:59:04 +0200 (Tue, 11 Jul 2006) | 5 lines
+
+bring the patch avx/builtroot/package/fusesmb/fusesmb_z0_archos_directories.patch into
+this tree.
+
+This patch tweaks some directories as needed for our devices.
+
+------------------------------------------------------------------------
+r9728 | frank | 2006-07-11 15:57:21 +0200 (Tue, 11 Jul 2006) | 6 lines
+
+bring the patch avx/builtroot/package/fusesmb/fusesmb_reload.patch into
+this tree.
+
+The idea is that fusesmb can now be signaled from the outside to reload its
+config (new credentials might be available).
+
+------------------------------------------------------------------------
+r9691 | frank | 2006-07-11 15:53:59 +0200 (Tue, 11 Jul 2006) | 2 lines
+
+Initial revision
+
+------------------------------------------------------------------------

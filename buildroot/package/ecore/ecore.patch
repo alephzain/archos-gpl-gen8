@@ -1,0 +1,11 @@
+--- ecore/configure.in.old	2008-12-09 10:04:46.000000000 +0100
++++ ecore/configure.in	2008-12-09 10:04:54.000000000 +0100
+@@ -35,7 +35,7 @@
+    eet
+    evas
+    ecore
+-   ecore-x
++   ecore-fb
+    ecore-evas
+    ecore-job
+    ecore-txt

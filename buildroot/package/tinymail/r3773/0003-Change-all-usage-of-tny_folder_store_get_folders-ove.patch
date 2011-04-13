@@ -1,0 +1,241 @@
+From bd9e4dfcc66eae0df130ec136ea8fc5a0c18786c Mon Sep 17 00:00:00 2001
+From: Rob Taylor <rob.taylor@codethink.co.uk>
+Date: Thu, 12 Jun 2008 11:34:43 +0100
+Subject: [PATCH] Change all usage of tny_folder_store_get_folders over to the new api
+
+---
+ ChangeLog                                          |   31 ++++++++++++++++++++
+ .../tny-gtk-folder-store-tree-model.c              |    6 ++--
+ tests/c-demo/tny-demoui-summary-view.c             |    4 +-
+ tests/functional/account-refresh.c                 |    3 +-
+ tests/functional/folder-lister-async.c             |    4 +-
+ tests/functional/folder-lister.c                   |    2 +-
+ tests/functional/folder-remove.c                   |    2 +-
+ tests/functional/folder-transfer.c                 |    2 +-
+ tests/functional/msg-transfer.c                    |    2 +-
+ tests/memory/memory-test.c                         |    4 +-
+ 10 files changed, 46 insertions(+), 14 deletions(-)
+
+diff --git a/ChangeLog b/ChangeLog
+index f05c53d..10938d3 100644
+--- a/ChangeLog
++++ b/ChangeLog
+@@ -1,4 +1,31 @@
+ 2008-09-23  Rob Taylor  <rob.taylor@codethink.co.uk>
++
++	* libtinymailui-gtk/tny-gtk-folder-store-tree-model.c:
++	* tests/c-demo/tny-demoui-summary-view.c: (recurse_poke),
++	* tests/functional/account-refresh.c: (recurse_folders),
++	* tests/functional/folder-lister-async.c: (callback), (dance):
++	* tests/functional/folder-lister.c: (recurse_folders):
++	* tests/functional/folder-remove.c: (recurse_folders):
++	* tests/functional/folder-transfer.c: (recurse_folders):
++	* tests/functional/msg-transfer.c: (find_folders):
++	* tests/memory/memory-test.c: (main):
++	Change all usage of tny_folder_store_get_folders over to the new api
++
++2008-09-23  Rob Taylor  <rob.taylor@codethink.co.uk>
++
++	* libtinymail-camel/tny-camel-folder.c:
++	* libtinymail-camel/tny-camel-folder.h:
++	* libtinymail-camel/tny-camel-store-account.c:
++	* libtinymail-camel/tny-camel-store-account.h:
++	* libtinymail/tny-combined-account.c:
++	* libtinymail/tny-folder-store.c: (tny_folder_store_get_folders),
++	* libtinymail/tny-folder-store.h:
++	* libtinymail/tny-shared.h:
++	Give tny_folder_store_get_folders a refresh parameter, for optionally not refreshing from the server.
++	Add tny_folder_store_refresh_async that will asynchronously refresh the store from the server, emitting TnyFolderStoreChanged events to observers.
++	Implement it all for camel.
++
++2008-09-23  Rob Taylor  <rob.taylor@codethink.co.uk>
+ 	* libtinymail-camel/tny-camel-folder.c:
+ 	* libtinymail-camel/tny-camel-store-account.c:
+ 	Notify observers about existing folders when they're attached.
+@@ -16,6 +43,7 @@
+ 	is loaded for the first time. They get folders_created events when a new folder
+ 	appears that we didn't know about before.
+ 
++<<<<<<< HEAD:ChangeLog
+ 2008-09-23  Rob Taylor  <rob.taylor@codethink.co.uk>
+ 
+ 	* libtinymail-camel/tny-camel-folder.c:
+@@ -23,6 +51,9 @@
+ 	do unrefs in dispose, not finalise for tny-camel-folder and tny-camel-store-account.
+ 
+ 2008-09-23  Rob Taylor  <rob.taylor@codethink.co.uk>
++=======
++2008-09-01  Rob Taylor  <rob.taylor@codethink.co.uk>
++>>>>>>> Change all usage of tny_folder_store_get_folders over to the new api:ChangeLog
+ 
+ 	* libtinymail-camel/tny-camel-folder.c:
+ 	* libtinymail-camel/tny-camel-folder.h:
+diff --git a/libtinymailui-gtk/tny-gtk-folder-store-tree-model.c b/libtinymailui-gtk/tny-gtk-folder-store-tree-model.c
+index 68334d6..68e2489 100644
+--- a/libtinymailui-gtk/tny-gtk-folder-store-tree-model.c
++++ b/libtinymailui-gtk/tny-gtk-folder-store-tree-model.c
+@@ -115,7 +115,7 @@ recurse_folders_sync (TnyGtkFolderStoreTreeModel *self, TnyFolderStore *store, G
+ 	TnyList *folders = tny_simple_list_new ();
+ 
+ 	/* TODO add error checking and reporting here */
+-	tny_folder_store_get_folders (store, folders, self->query, NULL);
++	tny_folder_store_get_folders (store, folders, self->query, TRUE, NULL);
+ 	iter = tny_list_create_iterator (folders);
+ 
+ 	while (!tny_iterator_is_done (iter))
+@@ -343,7 +343,7 @@ tny_gtk_folder_store_tree_model_on_constatus_changed (TnyAccount *account, TnyCo
+ 
+ 	list = tny_simple_list_new ();
+ 	tny_folder_store_get_folders_async (TNY_FOLDER_STORE (account), 
+-		list, self->query, get_folders_cb, NULL, g_object_ref (self));
++		list, self->query, TRUE, get_folders_cb, NULL, g_object_ref (self));
+ 
+ 	return;
+ }
+@@ -522,7 +522,7 @@ tny_gtk_folder_store_tree_model_add_i (TnyGtkFolderStoreTreeModel *self, TnyFold
+ 	 * before this one) */
+ 
+ 	tny_folder_store_get_folders_async (TNY_FOLDER_STORE (folder_store), 
+-		folders, self->query, get_folders_cb, NULL, g_object_ref (self));
++		folders, self->query, TRUE,  get_folders_cb, NULL, g_object_ref (self));
+ 
+ 	/* recurse_folders_sync (self, TNY_FOLDER_STORE (folder_store), &name_iter);  */
+ 
+diff --git a/tests/c-demo/tny-demoui-summary-view.c b/tests/c-demo/tny-demoui-summary-view.c
+index 9e9bdde..334b0b2 100644
+--- a/tests/c-demo/tny-demoui-summary-view.c
++++ b/tests/c-demo/tny-demoui-summary-view.c
+@@ -399,7 +399,7 @@ recurse_poke (TnyFolderStore *f_store)
+ 	TnyList *folders = tny_simple_list_new ();
+ 	TnyIterator *f_iter;
+ 
+-	tny_folder_store_get_folders (TNY_FOLDER_STORE (f_store), folders, NULL, NULL);
++	tny_folder_store_get_folders (TNY_FOLDER_STORE (f_store), folders, NULL, TRUE, NULL);
+ 	f_iter = tny_list_create_iterator (folders);
+ 	while (!tny_iterator_is_done (f_iter))
+ 	{
+@@ -1178,7 +1178,7 @@ fetch_folder_store_from_path (const gchar *path, TnyFolder *origin, gchar **name
+ 			tny_folder_store_query_add_item (query, folder_name, TNY_FOLDER_STORE_QUERY_OPTION_MATCH_ON_NAME);
+ 			g_free (folder_name);
+ 			list = tny_simple_list_new ();
+-			tny_folder_store_get_folders (origin_store, list, query, NULL);
++			tny_folder_store_get_folders (origin_store, list, query, TRUE, NULL);
+ 			g_object_unref (query);
+ 			if (tny_list_get_length (list) == 1) {
+ 				TnyIterator *iter;
+diff --git a/tests/functional/account-refresh.c b/tests/functional/account-refresh.c
+index 5dea360..bb13441 100644
+--- a/tests/functional/account-refresh.c
++++ b/tests/functional/account-refresh.c
+@@ -42,7 +42,7 @@ recurse_folders (TnyFolderStore *store, TnyFolderStoreQuery *query, TnyList *all
+ 	TnyIterator *iter;
+ 	TnyList *folders = tny_simple_list_new ();
+ 
+-	tny_folder_store_get_folders (store, folders, query, NULL);
++	tny_folder_store_get_folders (store, folders, query, TRUE, NULL);
+ 	iter = tny_list_create_iterator (folders);
+ 
+ 	while (!tny_iterator_is_done (iter)) {
+@@ -89,6 +89,7 @@ update_account_thread (gpointer thr_user_data)
+ 	tny_folder_store_get_folders (TNY_FOLDER_STORE (account),
+ 				      all_folders,
+ 				      NULL,
++				      TRUE,
+ 				      &error);
+ 	if (error)
+ 		goto out;
+diff --git a/tests/functional/folder-lister-async.c b/tests/functional/folder-lister-async.c
+index 49e1598..1fefa57 100644
+--- a/tests/functional/folder-lister-async.c
++++ b/tests/functional/folder-lister-async.c
+@@ -58,7 +58,7 @@ callback (TnyFolderStore *self, gboolean cancelled, TnyList *list, GError *err,
+ 		TnyList *folders = tny_simple_list_new ();
+ 		g_print ("%s\n", tny_folder_get_name (TNY_FOLDER (folder)));
+ 		tny_folder_store_get_folders_async (folder,
+-			folders, NULL, callback, NULL, NULL);
++			folders, NULL, TRUE, callback, NULL, NULL);
+ 		g_object_unref (G_OBJECT (folder));
+ 		tny_iterator_next (iter);
+ 	}
+@@ -82,7 +82,7 @@ dance (gpointer data)
+     
+ 	folders = tny_simple_list_new ();
+     	tny_folder_store_get_folders_async (TNY_FOLDER_STORE (account),
+-		folders, NULL, callback, NULL, NULL);
++		folders, NULL, TRUE, callback, NULL, NULL);
+     
+ 	return FALSE;
+ }
+diff --git a/tests/functional/folder-lister.c b/tests/functional/folder-lister.c
+index f802ab0..389b5f8 100644
+--- a/tests/functional/folder-lister.c
++++ b/tests/functional/folder-lister.c
+@@ -42,7 +42,7 @@ recurse_folders (TnyFolderStore *store, TnyFolderStoreQuery *query)
+ 	TnyIterator *iter;
+ 	TnyList *folders = tny_simple_list_new ();
+ 
+-	tny_folder_store_get_folders (store, folders, query, NULL);
++	tny_folder_store_get_folders (store, folders, query, TRUE, NULL);
+ 	iter = tny_list_create_iterator (folders);
+ 
+ 	while (!tny_iterator_is_done (iter))
+diff --git a/tests/functional/folder-remove.c b/tests/functional/folder-remove.c
+index fec72dc..fc9ff65 100644
+--- a/tests/functional/folder-remove.c
++++ b/tests/functional/folder-remove.c
+@@ -56,7 +56,7 @@ recurse_folders (TnyFolderStore *store, TnyFolderStoreQuery *query)
+ 	TnyIterator *iter;
+ 	TnyList *folders = tny_simple_list_new ();
+ 
+-	tny_folder_store_get_folders (store, folders, query, NULL);
++	tny_folder_store_get_folders (store, folders, query, TRUE, NULL);
+ 	iter = tny_list_create_iterator (folders);
+ 
+ 	while (!tny_iterator_is_done (iter))
+diff --git a/tests/functional/folder-transfer.c b/tests/functional/folder-transfer.c
+index 7db6d1a..0bb1bba 100644
+--- a/tests/functional/folder-transfer.c
++++ b/tests/functional/folder-transfer.c
+@@ -62,7 +62,7 @@ recurse_folders (TnyFolderStore *store, TnyFolderStoreQuery *query)
+ 	TnyIterator *iter;
+ 	TnyList *folders = tny_simple_list_new ();
+ 
+-	tny_folder_store_get_folders (store, folders, query, NULL);
++	tny_folder_store_get_folders (store, folders, query, TRUE, NULL);
+ 	iter = tny_list_create_iterator (folders);
+ 
+ 	while (!tny_iterator_is_done (iter))
+diff --git a/tests/functional/msg-transfer.c b/tests/functional/msg-transfer.c
+index 0c6ba31..4446628 100644
+--- a/tests/functional/msg-transfer.c
++++ b/tests/functional/msg-transfer.c
+@@ -49,7 +49,7 @@ find_folders (TnyFolderStore *store, TnyFolderStoreQuery *query,
+ 		return;
+ 
+ 	folders = tny_simple_list_new ();
+-	tny_folder_store_get_folders (store, folders, query, NULL);
++	tny_folder_store_get_folders (store, folders, query, TRUE, NULL);
+ 	iter = tny_list_create_iterator (folders);
+ 
+ 	while (!tny_iterator_is_done (iter) && (!*folder_src || !*folder_dst))
+diff --git a/tests/memory/memory-test.c b/tests/memory/memory-test.c
+index a2647dc..f757ad9 100644
+--- a/tests/memory/memory-test.c
++++ b/tests/memory/memory-test.c
+@@ -127,11 +127,11 @@ main (int argc, char **argv)
+ 	topfolders = tny_simple_list_new ();
+ 	folders = tny_simple_list_new ();
+ 
+-	tny_folder_store_get_folders (TNY_FOLDER_STORE (account), topfolders, NULL, NULL);
++	tny_folder_store_get_folders (TNY_FOLDER_STORE (account), topfolders, NULL, TRUE, NULL);
+ 	topiter = tny_list_create_iterator (topfolders);
+ 	inbox = TNY_FOLDER (tny_iterator_get_current (topiter));
+ 
+-	tny_folder_store_get_folders (TNY_FOLDER_STORE (inbox), folders, NULL, NULL);
++	tny_folder_store_get_folders (TNY_FOLDER_STORE (inbox), folders, NULL, TRUE, NULL);
+ 
+ 	if (iter)
+ 		g_object_unref (iter);
+-- 
+1.5.6.3
+

@@ -1,0 +1,10 @@
+--- a/zcav.cpp	2010-06-29 11:33:41.000000000 +0200
++++ b/zcav.cpp	2010-06-29 11:34:09.000000000 +0200
+@@ -9,6 +9,7 @@
+ #include <sys/stat.h>
+ #include <fcntl.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include "bonnie.h"
+ #ifdef HAVE_VECTOR
+ #include <vector>

@@ -1,0 +1,37 @@
+--- busybox-1.7.2/loginutils/sulogin.c	2007-09-03 13:48:47.000000000 +0200
++++ busybox-1.7.2_sulogin/loginutils/sulogin.c	2008-05-15 15:00:18.000000000 +0200
+@@ -41,7 +41,7 @@
+ 	int timeout = 0;
+ 	char *timeout_arg;
+ 	const char *const *p;
+-	struct passwd *pwd;
++	struct passwd *pwd = NULL;
+ 	const char *shell;
+ #if ENABLE_FEATURE_SHADOWPASSWDS
+ 	/* Using _r function to avoid pulling in static buffers */
+@@ -74,6 +74,7 @@
+ 	for (p = forbid; *p; p++)
+ 		unsetenv(*p);
+ 
++#if 0
+ 	signal(SIGALRM, catchalarm);
+ 
+ 	pwd = getpwuid(0);
+@@ -106,7 +107,7 @@
+ 	}
+ 	memset(cp, 0, strlen(cp));
+ 	signal(SIGALRM, SIG_DFL);
+-
++#endif
+ 	bb_info_msg("System Maintenance Mode");
+ 
+ 	USE_SELINUX(renew_current_security_context());
+@@ -115,7 +116,7 @@
+ 	if (!shell) shell = getenv("sushell");
+ 	if (!shell) {
+ 		shell = "/bin/sh";
+-		if (pwd->pw_shell[0])
++		if (pwd && pwd->pw_shell[0])
+ 			shell = pwd->pw_shell;
+ 	}
+ 	run_shell(shell, 1, 0, 0);

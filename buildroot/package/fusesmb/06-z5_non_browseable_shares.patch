@@ -1,0 +1,25 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/cache.c fusesmb-0.8.7/cache.c
+--- fusesmb-0.8.7.orig/cache.c	2009-04-01 12:31:39.000000000 +0200
++++ fusesmb-0.8.7/cache.c	2009-04-01 12:31:39.000000000 +0200
+@@ -282,8 +282,21 @@
+     dir = ctx->opendir(ctx, tmp_path);
+     if (dir == NULL)
+     {
++	fprintf(stderr, "ctx->opendir failed (%s)\n", strerror(errno));
+         //smbc_free_context(ctx, 1);
+         ctx->closedir(ctx, dir);
++        int len = strlen(wg)+ strlen(sv) + 3;
++        char tmp[len];
++        snprintf(tmp, len, "/%s/%s", wg, sv);
++        debug("%s", tmp);
++        pthread_mutex_lock(&cache_mutex);
++        if (-1 == sl_add(cache, tmp, 1))
++        {
++            pthread_mutex_unlock(&cache_mutex);
++            fprintf(stderr, "sl_add failed\n");
++            return -1;
++        }
++        pthread_mutex_unlock(&cache_mutex);
+         return -1;
+     }
+ 

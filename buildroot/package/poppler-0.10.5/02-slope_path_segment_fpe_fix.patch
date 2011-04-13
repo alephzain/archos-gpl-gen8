@@ -1,0 +1,12 @@
+diff -urN -X /home/marc/dontdiff poppler-0.10.5.orig/splash/SplashXPath.cc poppler-0.10.5/splash/SplashXPath.cc
+--- poppler-0.10.5.orig/splash/SplashXPath.cc	2008-10-09 22:30:34.000000000 +0200
++++ poppler-0.10.5/splash/SplashXPath.cc	2009-04-03 11:37:47.000000000 +0200
+@@ -389,6 +389,8 @@
+     }
+ #else
+     segs[length].dxdy = (x1 - x0) / (y1 - y0);
++    if (segs[length].dxdy == 0)
++    	segs[length].dxdy = 0.1;
+     segs[length].dydx = (SplashCoord)1 / segs[length].dxdy;
+ #endif
+   }

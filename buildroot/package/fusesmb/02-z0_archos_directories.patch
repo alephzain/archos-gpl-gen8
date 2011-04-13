@@ -1,0 +1,128 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/cache.c fusesmb-0.8.7/cache.c
+--- fusesmb-0.8.7.orig/cache.c	2009-04-01 12:31:39.000000000 +0200
++++ fusesmb-0.8.7/cache.c	2009-04-01 12:31:39.000000000 +0200
+@@ -472,9 +472,17 @@
+     sl_casesort(cache);
+     char cachefile[1024];
+     char tmp_cachefile[1024];
++#ifndef ARCHOS
+     snprintf(tmp_cachefile, 1024, "%s/.smb/fusesmb.cache.XXXXX", getenv("HOME"));
++#else
++    snprintf(tmp_cachefile, 1024, "/var/cache/fusesmb.cache.XXXXX");
++#endif
+     mkstemp(tmp_cachefile);
++#ifndef ARCHOS
+     snprintf(cachefile, 1024, "%s/.smb/fusesmb.cache", getenv("HOME"));
++#else
++    snprintf(cachefile, 1024, "/var/cache/fusesmb.cache");
++#endif
+     mode_t oldmask;
+     oldmask = umask(022);
+     FILE *fp = fopen(tmp_cachefile, "w");
+@@ -499,10 +507,18 @@
+ int main(int argc, char *argv[])
+ {
+     char pidfile[1024];
++#ifndef ARCHOS
+     snprintf(pidfile, 1024, "%s/.smb/fusesmb.cache.pid", getenv("HOME"));
++#else
++    snprintf(pidfile, 1024, "/var/run/fusesmb.cache.pid");
++#endif
+ 
+     char configfile[1024];
++#ifndef ARCHOS
+     snprintf(configfile, 1024, "%s/.smb/fusesmb.conf", getenv("HOME"));
++#else
++    snprintf(configfile, 1024, "/data/misc/smb/fusesmb.conf");
++#endif
+     if (-1 == config_init(&cfg, configfile))
+     {
+         fprintf(stderr, "Could not open config file: %s (%s)", configfile, strerror(errno));
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/fusesmb.c fusesmb-0.8.7/fusesmb.c
+--- fusesmb-0.8.7.orig/fusesmb.c	2009-04-01 12:31:39.000000000 +0200
++++ fusesmb-0.8.7/fusesmb.c	2009-04-01 12:31:39.000000000 +0200
+@@ -208,7 +208,11 @@
+         }
+ 
+         char cachefile[1024];
++#ifndef ARCHOS
+         snprintf(cachefile, 1024, "%s/.smb/fusesmb.cache", getenv("HOME"));
++#else
++        snprintf(cachefile, 1024, "/var/cache/fusesmb.cache");
++#endif
+         struct stat st;
+         memset(&st, 0, sizeof(struct stat));
+ 
+@@ -278,8 +282,11 @@
+     /* Check the cache for valid workgroup, hosts and shares */
+     if (slashcount(path) <= 3)
+     {
++#ifndef ARCHOS
+         snprintf(cache_file, 1024, "%s/.smb/fusesmb.cache", getenv("HOME"));
+-
++#else
++	snprintf(cache_file, 1024, "/var/cache/fusesmb.cache");
++#endif
+         if (strlen(path) == 1 && path[0] == '/')
+             path_exists = 1;
+         else
+@@ -416,7 +423,11 @@
+     if (slashcount(path) <= 2)
+     {
+         /* Listing Workgroups */
++#ifndef ARCHOS
+         snprintf(cache_file, 1024, "%s/.smb/fusesmb.cache", getenv("HOME"));
++#else
++	snprintf(cache_file, 1024, "/var/cache/fusesmb.cache");
++#endif
+         fp = fopen(cache_file, "r");
+         if (!fp)
+             return -ENOENT;
+@@ -975,7 +986,11 @@
+ {
+     struct stat st;
+     char pidfile[1024];
++#ifndef ARCHOS
+     snprintf(pidfile, 1024, "%s/.smb/fusesmb.pid", getenv("HOME"));
++#else
++    snprintf(pidfile, 1024, "/var/run/fusesmb.pid");
++#endif
+     pid_t pid = getpid();
+ 
+     if (-1 != stat(pidfile, &st))
+@@ -1009,7 +1024,11 @@
+     pthread_join(config_thread, NULL);
+ 
+     char pidfile[1024];
++#ifndef ARCHOS
+     snprintf(pidfile, 1024, "%s/.smb/fusesmb.pid", getenv("HOME"));
++#else
++    snprintf(pidfile, 1024, "/var/run/fusesmb.pid");
++#endif
+     unlink(pidfile);
+ }
+ 
+@@ -1056,7 +1075,11 @@
+ 
+     /* Check if the directory for smbcache exists and if not so create it */
+     char cache_path[1024];
++#ifndef ARCHOS
+     snprintf(cache_path, 1024, "%s/.smb/", getenv("HOME"));
++#else
++    snprintf(cache_path, 1024, "/data/misc/smb/");
++#endif
+     struct stat st;
+     if (-1 == stat(cache_path, &st))
+     {
+@@ -1078,7 +1101,11 @@
+     }
+ 
+     char configfile[1024];
++#ifndef ARCHOS
+     snprintf(configfile, 1024, "%s/.smb/fusesmb.conf", getenv("HOME"));
++#else
++    snprintf(configfile, 1024, "/data/misc/smb/fusesmb.conf");
++#endif
+     if (-1 == stat(configfile, &st))
+     {
+         if (errno != ENOENT)

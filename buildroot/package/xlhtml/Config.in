@@ -1,0 +1,5 @@
+config BR2_PACKAGE_XLHTML
+	bool "xlhtml"
+	default n
+	help
+		Contains the Excel (xlhtml) and Powerpoint (ppthtml) to html converters.

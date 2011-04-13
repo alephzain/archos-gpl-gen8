@@ -1,0 +1,26 @@
+diff -urN -X /home/marc/dontdiff fusesmb-0.8.7.orig/fusesmb.c fusesmb-0.8.7/fusesmb.c
+--- fusesmb-0.8.7.orig/fusesmb.c	2009-04-01 12:31:39.000000000 +0200
++++ fusesmb-0.8.7/fusesmb.c	2009-04-01 12:31:39.000000000 +0200
+@@ -1139,20 +1139,8 @@
+        we're looking in FUSESMB_CACHE_BINDIR, $PATH or in cwd */
+     if (-1 == stat(FUSESMB_CACHE_BINDIR"/fusesmb.cache", &st))
+     {
+-        if (-1 == stat("fusesmb.cache", &st))
+-        {
+-            fprintf(stderr, "Could not find the required file fusesmb.cache.\n"
+-                            "This file should either be in:\n"
+-                            " - "FUSESMB_CACHE_BINDIR"\n"
+-                            " - $PATH\n"
+-                            " - your current working directory\n"
+-                            "(%s)\n", strerror(errno));
+-            exit(EXIT_FAILURE);
+-        }
+-        else
+-        {
+-            strncpy(fusesmb_cache_bin, "fusesmb.cache", MAXPATHLEN-1);
+-        }
++        fprintf(stderr, "Assuming that fusesmb.cache is in the current PATH\n");
++        strncpy(fusesmb_cache_bin, "fusesmb.cache", MAXPATHLEN-1);
+     }
+     else
+     {

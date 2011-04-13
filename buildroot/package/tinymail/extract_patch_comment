@@ -1,0 +1,10 @@
+#! /bin/sh
+
+for FILE in $(find -name "*.patch" | sort) ; do
+	echo $FILE | sed 's,^[^0-9]*\([0-9]*\).*,\1,'
+	COMMENT=$(sed -n '/^Subject: \[PATCH\] /,/^---/p' $FILE | sed 's,Subject: \[PATCH\] ,,' | grep '[a-z]')
+	if [ -z "$COMMENT" ] ; then
+		COMMENT=$(echo $FILE | sed 's,[^0-9]*[0-9]*-\(.*\)\.patch,\1,' | tr '-' ' ')
+	fi
+	echo $COMMENT | sed 's,^,    ,'
+done

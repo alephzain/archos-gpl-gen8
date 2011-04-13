@@ -1,0 +1,5 @@
+migration from 0.5.1 to 0.10.5
+- links patch is no longer necessary since link management is now embedded into poppler: we need to modify apdf to comply with poppler way of handling it (not done -> link management disabled in apdf). Thus if you want to use this version of poppler you need to #undef LINKS_SUPPORT in packages/apdf/src/pdfwidget.cpp
+- scaling should rely on renderToPixmap/renderToImage in qt/poppler-page.cc instead of renderToBufferSacled
+- renderToImageScaled is not used anywhere -> should be suppressed
+- note that there is no HW scaling

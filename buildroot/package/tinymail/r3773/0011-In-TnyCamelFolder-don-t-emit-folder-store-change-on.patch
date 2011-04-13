@@ -1,0 +1,26 @@
+From 5b916fe58f3f496bd4cccf0137c2fb84bc29e5b5 Mon Sep 17 00:00:00 2001
+From: Rob Taylor <rob.taylor@codethink.co.uk>
+Date: Tue, 26 Aug 2008 16:51:24 +0100
+Subject: [PATCH] In TnyCamelFolder don't emit folder store change on observer attachment if there's no folders.
+
+---
+ libtinymail-camel/tny-camel-folder.c |    3 ++-
+ 1 files changed, 2 insertions(+), 1 deletions(-)
+
+diff --git a/libtinymail-camel/tny-camel-folder.c b/libtinymail-camel/tny-camel-folder.c
+index 7fc0572..ebf886a 100644
+--- a/libtinymail-camel/tny-camel-folder.c
++++ b/libtinymail-camel/tny-camel-folder.c
+@@ -6215,7 +6215,8 @@ tny_camel_folder_store_add_observer_default (TnyFolderStore *self, TnyFolderStor
+ 	g_static_rec_mutex_unlock (priv->obs_lock);
+ 
+ 	g_hash_table_foreach (priv->known_folders, build_appeared_change, change);
+-	notify_folder_store_observers_about_in_idle (self, change, TNY_FOLDER_PRIV_GET_SESSION (priv));
++	if (tny_folder_store_change_get_changed (change) != 0) 
++		notify_folder_store_observers_about_in_idle (self, change, TNY_FOLDER_PRIV_GET_SESSION (priv));
+ 	g_object_unref (change);
+ 
+ 	return;
+-- 
+1.5.6.3
+

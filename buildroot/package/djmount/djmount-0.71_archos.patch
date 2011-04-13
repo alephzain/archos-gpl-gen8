@@ -1,0 +1,97 @@
+--- a/djmount/content_dir.c	2006-08-27 22:12:20.000000000 +0200
++++ b/djmount/content_dir.c	2010-05-27 10:54:03.000000000 +0200
+@@ -293,8 +293,10 @@
+ 				       &nb_matched,
+ 				       &nb_returned,
+ 				       objects);
+-	if (rc != UPNP_E_SUCCESS) 
++	result->error = rc;
++	if (rc != UPNP_E_SUCCESS){ 
+ 		goto FAIL; // ---------->
++	}
+ 	
+ 	// Loop if missing entries
+ 	// (this is not normal : "RequestedCount" == 0 means to request 
+@@ -321,6 +323,7 @@
+ 			 &nb_matched,
+ 			 &nb_returned,
+ 			 objects);
++		result->error = rc;
+ 		// Stop if error, or no more results (to prevent infinite loop)
+ 		if (rc != UPNP_E_SUCCESS || nb_returned == 0)
+ 			break; // ---------->
+@@ -329,8 +332,7 @@
+ 	return result;
+ 
+ FAIL:
+-	talloc_free (result);
+-	return NULL; 
++	return result; 
+ }
+ 
+ 
+@@ -437,9 +439,10 @@
+ 		ithread_mutex_unlock (&cds->cache_mutex);
+ 	}
+ 
+-	if (br->children == NULL) {
+-		talloc_free (br);
+-		br = NULL;
++	if (br->children->error!= UPNP_E_SUCCESS) {
++		 br->error=br->children->error;
++		 talloc_free(br->children);
++		 br->children=NULL;
+ 	}
+ 	
+ 	return br;
+--- a/djmount/content_dir.h	2006-08-27 22:12:20.000000000 +0200
++++ b/djmount/content_dir.h	2010-05-27 10:54:03.000000000 +0200
+@@ -74,6 +74,7 @@
+ typedef struct _ContentDir_Children {
+ 
+ 	PtrArray* 	 objects; // List element type = "DIDLObject*"
++	int error;
+ #if CONTENT_DIR_HAVE_CHILDREN_MUTEX
+ 	ithread_mutex_t  mutex;   /* to synchronise modifications to the list
+ 				     content */
+@@ -91,6 +92,7 @@
+ 
+ 	ContentDir*		cds;
+ 	ContentDir_Children*	children;
++	int error;
+   
+ } ContentDir_BrowseResult;
+ 
+--- a/djmount/djfs.c	2006-08-27 22:12:20.000000000 +0200
++++ b/djmount/djfs.c	2010-05-27 10:54:03.000000000 +0200
+@@ -414,12 +414,24 @@
+ 	    }
+ 	  }
+ 	}
+-      } DIR_END; // devName
+-    } PTR_ARRAY_FOR_EACH_PTR_END;
+-    
+-  } BROWSE_END;
+-  
+-  return BROWSE_RESULT;
++	else{
++		if(current){
++			if (current->error== 801){
++				Log_Printf(LOG_WARNING,"not allowed to connect, check permission on server");
++				FILE_BEGIN("not_allowed"){}FILE_END;}
++		}
++		talloc_free(current);
++		current = NULL;
++
++	}
++
++
++    } DIR_END; // devName
++  } PTR_ARRAY_FOR_EACH_PTR_END;
++
++} BROWSE_END;
++
++return BROWSE_RESULT;
+ }
+ 
+ 

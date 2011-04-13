@@ -1,0 +1,13 @@
+--- strace-4.5.15/system.c_orig	2010-05-19 11:07:39.000000000 +0200
++++ strace-4.5.15/system.c	2010-05-19 11:08:58.000000000 +0200
+@@ -70,6 +70,10 @@
+ #include <linux/capability.h>
+ #endif
+ 
++// uclibc-0.9.30 defines this, but has no asm/cachectl.h for ARM
++// uClibc-0.9.29 did not BTW
++#undef SYS_cacheflush
++
+ #ifdef SYS_cacheflush
+ #include <asm/cachectl.h>
+ #endif

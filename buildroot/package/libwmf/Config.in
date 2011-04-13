@@ -1,0 +1,12 @@
+config BR2_PACKAGE_LIBWMF
+	bool "libwmf"
+	default n
+	depends on BR2_PACKAGE_FREETYPE
+	depends on BR2_PACKAGE_LIBXML2
+	depends on BR2_PACKAGE_ZLIB
+	depends on BR2_PACKAGE_JPEG
+	depends on BR2_PACKAGE_LIBPNG
+	depends on BR2_PACKAGE_EXPAT
+	help
+		A library for reading vector images in Microsoft's native Windows Metafile Format (WMF).
+		http://wvware.sourceforge.net/

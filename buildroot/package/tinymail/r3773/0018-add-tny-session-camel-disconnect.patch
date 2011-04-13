@@ -1,0 +1,20 @@
+Index: libtinymail/libtinymail-camel/tny-session-camel.c
+===================================================================
+--- libtinymail/libtinymail-camel/tny-session-camel.c	(révision 49)
++++ libtinymail/libtinymail-camel/tny-session-camel.c	(copie de travail)
+@@ -994,6 +994,15 @@
+ 	return;
+ }
+ 
++void 
++tny_session_camel_disconnect (TnySessionCamel *self )
++{
++	TnySessionCamelPriv *priv = self->priv;
++
++	if( priv->device )
++		g_signal_handler_disconnect (G_OBJECT (priv->device), priv->connchanged_signal);
++}
++
+ /**
+  * tny_session_camel_set_account_store:
+  * @self: a #TnySessionCamel object

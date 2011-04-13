@@ -1,0 +1,27 @@
+diff -pur dosfstools-2.11/dosfsck/boot.c dosfstools-2.11.new/dosfsck/boot.c
+--- dosfstools-2.11/dosfsck/boot.c	2005-03-12 16:16:22.000000000 +0200
++++ dosfstools-2.11.new/dosfsck/boot.c	2007-09-25 11:20:27.400448840 +0300
+@@ -171,21 +171,8 @@ static void check_backup_boot(DOS_FS *fs
+ 	}
+ 	printf( "\n" );
+ 
+-	if (interactive)
+-	    printf( "1) Copy original to backup\n"
+-		    "2) Copy backup to original\n"
+-		    "3) No action\n" );
+-	else printf( "  Not automatically fixing this.\n" );
+-	switch (interactive ? get_key("123","?") : '3') {
+-	  case '1':
+-	    fs_write(fs->backupboot_start,sizeof(*b),b);
+-	    break;
+-	  case '2':
+-	    fs_write(0,sizeof(b2),&b2);
+-	    break;
+-	  default:
+-	    break;
+-	}
++	printf("Copying backup to original\n");
++	fs_write(0,sizeof(b2),&b2);
+     }
+ }
+ 

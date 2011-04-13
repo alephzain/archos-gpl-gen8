@@ -1,0 +1,118 @@
+diff -X /home/marc/dontdiff -ruN libupnp-1.6.6.orig/ixml/inc/ixml.h libupnp-1.6.6/ixml/inc/ixml.h
+--- libupnp-1.6.6.orig/ixml/inc/ixml.h	2008-02-10 02:55:39.000000000 +0100
++++ libupnp-1.6.6/ixml/inc/ixml.h	2009-12-11 09:24:07.000000000 +0100
+@@ -53,7 +53,7 @@
+ 	#define EXPORT_SPEC
+ #endif
+ 
+-typedef int BOOL;
++typedef int IXML_BOOL;
+ 
+ 
+ #define DOMString   char *
+@@ -172,7 +172,7 @@
+     DOMString       namespaceURI;
+     DOMString       prefix;
+     DOMString       localName;
+-    BOOL            readOnly;
++    IXML_BOOL       readOnly;
+ 
+     Nodeptr         parentNode;
+     Nodeptr         firstChild;
+@@ -203,7 +203,7 @@
+ typedef struct _IXML_ATTR
+ {
+     IXML_Node   n;
+-    BOOL        specified;
++    IXML_BOOL   specified;
+     IXML_Element *ownerElement;
+ } IXML_Attr;
+ 
+@@ -589,11 +589,11 @@
+ 
+   /** Queries whether or not a {\bf Node} has children.
+    *
+-   *  @return [BOOL] {\tt TRUE} if the {\bf Node} has one or more children 
++   *  @return [IXML_BOOL] {\tt TRUE} if the {\bf Node} has one or more children 
+    *                 otherwise {\tt FALSE}.
+    */
+ 
+-EXPORT_SPEC BOOL    
++EXPORT_SPEC IXML_BOOL    
+ ixmlNode_hasChildNodes(IXML_Node *nodeptr  
+ 		         /** The {\bf Node} to query for children. */
+                    );
+@@ -609,7 +609,7 @@
+ EXPORT_SPEC IXML_Node*   
+ ixmlNode_cloneNode(IXML_Node *nodeptr,  
+ 		     /** The {\bf Node} to clone.  */
+-                   BOOL deep
++                   IXML_BOOL deep
+ 		     /** {\tt TRUE} to clone the subtree also or {\tt FALSE} 
+ 		         to clone only {\bf nodeptr}. */
+                   );
+@@ -617,11 +617,11 @@
+   /** Queries whether this {\bf Node} has attributes.  Note that only 
+    *  {\bf Element} nodes have attributes.
+    *
+-   *  @return [BOOL] {\tt TRUE} if the {\bf Node} has attributes otherwise 
++   *  @return [IXML_BOOL] {\tt TRUE} if the {\bf Node} has attributes otherwise 
+    *                 {\tt FALSE}.
+    */
+ 
+-EXPORT_SPEC BOOL    
++EXPORT_SPEC IXML_BOOL    
+ ixmlNode_hasAttributes(IXML_Node *nodeptr
+ 		         /** The {\bf Node} to query for attributes. */
+                       );
+@@ -1122,7 +1122,7 @@
+ 		          /** The {\bf Document} into which to import. */
+                         IXML_Node* importNode,  
+ 			  /** The {\bf Node} to import. */
+-                        BOOL deep,         
++                        IXML_BOOL deep,         
+ 			  /** {\tt TRUE} to import all children of {\bf 
+ 			      importNode} or {\tt FALSE} to import only the 
+ 			      root node. */
+@@ -1454,12 +1454,12 @@
+   /** Queries whether the {\bf Element} has an attribute with the given name
+    *  or a default value.
+    *
+-   *  @return [BOOL] {\tt TRUE} if the {\bf Element} has an attribute with 
++   *  @return [IXML_BOOL] {\tt TRUE} if the {\bf Element} has an attribute with 
+    *                 this name or has a default value for that attribute, 
+    *                 otherwise {\tt FALSE}.
+    */
+ 
+-EXPORT_SPEC BOOL        
++EXPORT_SPEC IXML_BOOL        
+ ixmlElement_hasAttribute(IXML_Element* element, 
+ 		           /** The {\bf Element} on which to check for an 
+ 			       attribute. */
+@@ -1470,12 +1470,12 @@
+   /** Queries whether the {\bf Element} has an attribute with the given
+    *  local name and namespace URI or has a default value for that attribute.
+    *
+-   *  @return [BOOL] {\tt TRUE} if the {\bf Element} has an attribute with 
++   *  @return [IXML_BOOL] {\tt TRUE} if the {\bf Element} has an attribute with 
+    *                 the given namespace and local name or has a default 
+    *                 value for that attribute, otherwise {\tt FALSE}.
+    */
+ 
+-EXPORT_SPEC BOOL        
++EXPORT_SPEC IXML_BOOL        
+ ixmlElement_hasAttributeNS(IXML_Element* element,       
+ 		             /** The {\bf Element} on which to check for the 
+ 			         attribute. */
+diff -X /home/marc/dontdiff -ruN libupnp-1.6.6.orig/ixml/src/inc/ixmlparser.h libupnp-1.6.6/ixml/src/inc/ixmlparser.h
+--- libupnp-1.6.6.orig/ixml/src/inc/ixmlparser.h	2008-02-10 02:55:39.000000000 +0100
++++ libupnp-1.6.6/ixml/src/inc/ixmlparser.h	2009-12-11 09:24:59.000000000 +0100
+@@ -35,6 +35,8 @@
+ #include "ixml.h"
+ #include "ixmlmembuf.h"
+ 
++#define BOOL IXML_BOOL
++
+ // Parser definitions
+ #define QUOT        "&quot;"
+ #define LT          "&lt;"

@@ -1,0 +1,112 @@
+Submitted By: Agathoklis Hatzimanikas <ag at linuxfromscratch dot org>
+Date: 2010-01-06
+Initial Package Version: 3.5.0
+Upstream Status: Uknown
+Origin: Gentoo
+Description: Allows Valgring to build with glibc-2.11
+
+diff -ruN valgrind-3.5.0/configure.in valgrind-3.5.0-fixed/configure.in
+--- valgrind-3.5.0/configure.in	2009-11-07 23:34:37.000000000 +0100
++++ valgrind-3.5.0-fixed/configure.in	2009-11-07 23:38:14.000000000 +0100
+@@ -656,6 +656,16 @@
+ ],
+ GLIBC_VERSION="2.10")
+ 
++AC_EGREP_CPP([GLIBC_211], [
++#include <features.h>
++#ifdef __GNU_LIBRARY__
++ #if (__GLIBC__ == 2 && __GLIBC_MINOR__ == 11)
++  GLIBC_211
++ #endif
++#endif
++],
++GLIBC_VERSION="2.11")
++
+ AC_EGREP_CPP([AIX5_LIBC], [
+ #include <standards.h>
+ #if defined(_AIXVERSION_510) || defined(_AIXVERSION_520) || defined(_AIXVERSION_530)
+@@ -742,6 +752,13 @@
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
++     2.11)
++	AC_MSG_RESULT(2.11 family)
++	AC_DEFINE([GLIBC_2_11], 1, [Define to 1 if you're using glibc 2.11.x])
++	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
++	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
++	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
++	;;
+      aix5)
+ 	AC_MSG_RESULT(AIX 5.1 or 5.2 or 5.3)
+ 	AC_DEFINE([AIX5_LIBC], 1, [Define to 1 if you're using AIX 5.1 or 5.2 or 5.3])
+@@ -755,7 +772,7 @@
+ 
+      *)
+ 	AC_MSG_RESULT(unsupported version)
+-	AC_MSG_ERROR([Valgrind requires glibc version 2.2 - 2.10])
++	AC_MSG_ERROR([Valgrind requires glibc version 2.2 - 2.11])
+ 	AC_MSG_ERROR([or AIX 5.1 or 5.2 or 5.3 GLIBC_VERSION])
+ 	AC_MSG_ERROR([or Darwin libc])
+ 	;;
+diff -uwbr valgrind-3.5.0/configure valgrind-3.5.0_patched/configure
+--- valgrind-3.5.0/configure	2009-08-19 15:44:07.000000000 +0200
++++ valgrind-3.5.0_patched/configure	2010-08-19 21:51:07.694283605 +0200
+@@ -5025,6 +5025,28 @@
+ cat >>conftest.$ac_ext <<_ACEOF
+ /* end confdefs.h.  */
+ 
++#include <features.h>
++#ifdef __GNU_LIBRARY__
++ #if (__GLIBC__ == 2 && __GLIBC_MINOR__ == 11)
++  GLIBC_211
++ #endif
++#endif
++
++_ACEOF
++if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
++  $EGREP "GLIBC_211" >/dev/null 2>&1; then
++  GLIBC_VERSION="2.11"
++fi
++rm -f conftest*
++
++
++cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++
+ #include <standards.h>
+ #if defined(_AIXVERSION_510) || defined(_AIXVERSION_520) || defined(_AIXVERSION_530)
+   AIX5_LIBC
+@@ -5174,6 +5196,18 @@
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
++     2.11)
++	echo "$as_me:$LINENO: result: 2.11 family" >&5
++echo "${ECHO_T}2.11 family" >&6
++
++cat >>confdefs.h <<\_ACEOF
++#define GLIBC_2_11 1
++_ACEOF
++
++	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
++	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
++	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
++	;;
+      aix5)
+ 	echo "$as_me:$LINENO: result: AIX 5.1 or 5.2 or 5.3" >&5
+ echo "${ECHO_T}AIX 5.1 or 5.2 or 5.3" >&6
+@@ -5198,8 +5232,8 @@
+      *)
+ 	echo "$as_me:$LINENO: result: unsupported version" >&5
+ echo "${ECHO_T}unsupported version" >&6
+-	{ { echo "$as_me:$LINENO: error: Valgrind requires glibc version 2.2 - 2.10" >&5
+-echo "$as_me: error: Valgrind requires glibc version 2.2 - 2.10" >&2;}
++	{ { echo "$as_me:$LINENO: error: Valgrind requires glibc version 2.2 - 2.11" >&5
++echo "$as_me: error: Valgrind requires glibc version 2.2 - 2.11" >&2;}
+    { (exit 1); exit 1; }; }
+ 	{ { echo "$as_me:$LINENO: error: or AIX 5.1 or 5.2 or 5.3 GLIBC_VERSION" >&5
+ echo "$as_me: error: or AIX 5.1 or 5.2 or 5.3 GLIBC_VERSION" >&2;}

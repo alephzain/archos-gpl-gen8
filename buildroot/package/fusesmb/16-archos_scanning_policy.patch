@@ -1,0 +1,70 @@
+diff -Naur a/cache.c b/cache.c
+--- a/cache.c	2010-06-23 17:50:13.000000000 +0200
++++ b/cache.c	2010-06-23 18:09:16.000000000 +0200
+@@ -563,6 +563,9 @@
+     fclose(fp);
+     /* Make refreshing cache file atomic */
+     rename(tmp_cachefile, cachefile);
++#ifdef ARCHOS
++    //remove("/tmp/smb_search_in_progress");
++#endif
+     sl_free(cache);
+ }
+ 
+@@ -572,6 +575,12 @@
+ 
+     SMBCFILE *dir;
+     struct smbc_dirent *workgroup_dirent;
++#ifdef ARCHOS
++    int fd;
++    fd = open("/var/cache/smb_search_in_progress", O_APPEND|O_CREAT, 0666);
++    close(fd);
++#endif
++
+ 
+ DBG syslog(LOG_DEBUG, "ctx->opendir(ctx, \"smb://\");");
+ 
+@@ -679,6 +688,9 @@
+             exit(EXIT_FAILURE);
+         }
+         fclose(fp);
++#ifdef ARCHOS
++	//remove("/tmp/smb_search_in_progress");
++#endif
+     }
+     smbc_free_context(ctx, 1);
+     options_free(&opts);
+diff -Naur a/fusesmb.c b/fusesmb.c
+--- a/fusesmb.c	2010-06-23 17:50:13.000000000 +0200
++++ b/fusesmb.c	2010-06-23 17:34:04.000000000 +0200
+@@ -215,6 +215,7 @@
+         {
+             count++;
+         }
++	/*
+ 
+         char cachefile[1024];
+ #ifndef ARCHOS
+@@ -238,7 +239,7 @@
+             {
+                 system("fusesmb.cache");
+             }
+-        }
++        }*/
+ 
+         check_config_file();
+ 
+@@ -1019,8 +1020,10 @@
+     debug();
+     if (0 != pthread_create(&cleanup_thread, NULL, smb_purge_thread, NULL))
+         exit(EXIT_FAILURE);
+-    if (0 != pthread_create(&config_thread, NULL, check_config_file_thread, NULL))
+-        exit(EXIT_FAILURE);
++    //if (0 != pthread_create(&config_thread, NULL, check_config_file_thread, NULL))
++    //    exit(EXIT_FAILURE);
++    system(fusesmb_cache_bin);
++
+ 
+     struct sigaction act;
+     memset(&act, '\0', sizeof(struct sigaction));
+

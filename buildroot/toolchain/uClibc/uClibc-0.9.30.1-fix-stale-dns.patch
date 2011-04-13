@@ -1,0 +1,50 @@
+--- uClibc-0.9.30.1_org/libc/inet/resolv.c	2008-11-02 01:25:33.000000000 +0100
++++ uClibc-0.9.30.1/libc/inet/resolv.c	2009-09-30 13:23:19.000000000 +0200
+@@ -154,6 +154,7 @@
+ #include <arpa/nameser.h>
+ #include <sys/utsname.h>
+ #include <sys/un.h>
++#include <sys/stat.h>
+ #include <bits/uClibc_mutex.h>
+ 
+ /* poll() is not supported in kernel <= 2.0, therefore if __NR_poll is
+@@ -1118,6 +1119,17 @@
+  *	unix systems, we can have a list of nameservers after the keyword.
+  */
+ 
++static time_t __nameservers_mtime;
++static time_t __file_mtime(const char* fname)
++{
++	struct stat buf;
++	
++	if (stat(fname, &buf) < 0)
++		return 0;
++		
++	return buf.st_mtime;
++}
++
+ void attribute_hidden __open_nameservers(void)
+ {
+ 	FILE *fp;
+@@ -1125,11 +1137,20 @@
+ #define RESOLV_ARGS 5
+ 	char szBuffer[128], *p, *argv[RESOLV_ARGS];
+ 	int argc;
++	time_t mt;
++
++	mt = __file_mtime("/etc/resolv.conf");
+ 
+ 	__UCLIBC_MUTEX_LOCK(__resolv_lock);
+-	if (__nameservers > 0)
++	if (__nameservers > 0 && mt == __nameservers_mtime)
+ 		goto DONE;
+ 
++	__UCLIBC_MUTEX_UNLOCK(__resolv_lock);
++	__close_nameservers();
++	__UCLIBC_MUTEX_LOCK(__resolv_lock);
++	
++	__nameservers_mtime = mt;
++	
+ 	if ((fp = fopen("/etc/resolv.conf", "r")) ||
+ 		(fp = fopen("/etc/config/resolv.conf", "r")))
+ 	{

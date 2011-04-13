@@ -1,0 +1,7 @@
+config BR2_PACKAGE_EINA
+	bool "eina"
+	default n
+	help
+	  Eina is the Enlightenment library that implements fast data types and miscellaneous tools.
+
+	  http://www.enlightenment.org/

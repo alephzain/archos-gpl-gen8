@@ -1,0 +1,9 @@
+config BR2_PACKAGE_FFMPEG
+	bool "ffmpeg"
+	depends on BR2_PACKAGE_ZLIB 
+	depends on BR2_PACKAGE_LIBFAAC 
+	depends on BR2_PACKAGE_LIBFAAD2
+	default n
+	help
+	 ffmpeg
+

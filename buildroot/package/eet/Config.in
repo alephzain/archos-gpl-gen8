@@ -1,0 +1,8 @@
+config BR2_PACKAGE_EET
+	bool "eet"
+	default n
+	select BR2_PACKAGE_EINA
+	help
+	  EET is the Enlightenment library for speedy data storage, retrieval, and compression.
+
+	  http://www.enlightenment.org/

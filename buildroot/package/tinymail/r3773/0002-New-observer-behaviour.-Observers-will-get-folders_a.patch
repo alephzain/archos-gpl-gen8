@@ -1,0 +1,843 @@
+From e4d00d65f52428a6027f46657a2baef7268c0a20 Mon Sep 17 00:00:00 2001
+From: Rob Taylor <rob.taylor@codethink.co.uk>
+Date: Thu, 28 Aug 2008 11:44:47 +0100
+Subject: [PATCH] New observer behaviour. Observers will get folders_appeared events when a
+ tny_folder_store_refresh or tny_folder_store_get_folders occurs and the cache
+ is loaded for the first time. They get folders_created events when a new folder
+ appears that we didn't know about before.
+ Observers are notified about existing folders when they're attached.
+
+---
+ ChangeLog                                        |   24 +++
+ libtinymail-camel/tny-camel-folder-priv.h        |    1 +
+ libtinymail-camel/tny-camel-folder.c             |  166 +++++++++++++++++---
+ libtinymail-camel/tny-camel-store-account-priv.h |    1 +
+ libtinymail-camel/tny-camel-store-account.c      |  182 +++++++++++++++------
+ libtinymail/tny-folder-store-change.c            |   81 +++++++++-
+ libtinymail/tny-folder-store-change.h            |    5 +-
+ 7 files changed, 378 insertions(+), 82 deletions(-)
+
+diff --git a/ChangeLog b/ChangeLog
+index e6b433f..f05c53d 100644
+--- a/ChangeLog
++++ b/ChangeLog
+@@ -1,4 +1,28 @@
+ 2008-09-23  Rob Taylor  <rob.taylor@codethink.co.uk>
++	* libtinymail-camel/tny-camel-folder.c:
++	* libtinymail-camel/tny-camel-store-account.c:
++	Notify observers about existing folders when they're attached.
++
++2008-09-23  Rob Taylor  <rob.taylor@codethink.co.uk>
++
++	* libtinymail-camel/tny-camel-folder-priv.h:
++	* libtinymail-camel/tny-camel-folder.c:
++	* libtinymail-camel/tny-camel-store-account-priv.h:
++	* libtinymail-camel/tny-camel-store-account.c:
++	* libtinymail/tny-folder-store-change.c:
++	* libtinymail/tny-folder-store-change.h:
++	New observer behaviour. Observers will get folders_appeared events when a
++	tny_folder_store_refresh or tny_folder_store_get_folders occurs and the cache
++	is loaded for the first time. They get folders_created events when a new folder
++	appears that we didn't know about before.
++
++2008-09-23  Rob Taylor  <rob.taylor@codethink.co.uk>
++
++	* libtinymail-camel/tny-camel-folder.c:
++	* libtinymail-camel/tny-camel-store-account.c:
++	do unrefs in dispose, not finalise for tny-camel-folder and tny-camel-store-account.
++
++2008-09-23  Rob Taylor  <rob.taylor@codethink.co.uk>
+ 
+ 	* libtinymail-camel/tny-camel-folder.c:
+ 	* libtinymail-camel/tny-camel-folder.h:
+diff --git a/libtinymail-camel/tny-camel-folder-priv.h b/libtinymail-camel/tny-camel-folder-priv.h
+index 48bc5eb..11bde07 100644
+--- a/libtinymail-camel/tny-camel-folder-priv.h
++++ b/libtinymail-camel/tny-camel-folder-priv.h
+@@ -54,6 +54,7 @@ struct _TnyCamelFolderPriv
+ 	CamelException load_ex;
+ 	GList *obs, *sobs;
+ 	gboolean cant_reuse_iter;
++	GHashTable *known_folders;
+ };
+ 
+ CamelFolder* _tny_camel_folder_get_camel_folder (TnyCamelFolder *self);
+diff --git a/libtinymail-camel/tny-camel-folder.c b/libtinymail-camel/tny-camel-folder.c
+index 4aea7e6..7fc0572 100644
+--- a/libtinymail-camel/tny-camel-folder.c
++++ b/libtinymail-camel/tny-camel-folder.c
+@@ -1533,6 +1533,23 @@ notify_account_del (gpointer user_data, GObject *parent)
+ }
+ #endif
+ 
++static void
++known_folder_del (gpointer user_data, GObject *folder)
++{
++	TnyCamelFolderPriv *priv = TNY_CAMEL_FOLDER_GET_PRIVATE (user_data);
++	g_hash_table_remove (priv->known_folders, folder);
++}
++
++
++static gboolean
++known_folder_remover (GObject *folder,
++                      gpointer value,
++                      TnyCamelFolder *self)
++{
++	g_object_weak_unref (folder, known_folder_del, self);
++	return TRUE;
++}
++
+ void
+ _tny_camel_folder_set_account (TnyCamelFolder *self, TnyAccount *account)
+ {
+@@ -5032,7 +5049,6 @@ _tny_camel_folder_set_folder_info (TnyFolderStore *self, TnyCamelFolder *folder,
+ 			    "in the software\n");
+ 
+ 	_tny_camel_folder_set_name (folder, info->name);
+-	_tny_camel_folder_set_iter (folder, info);
+ 
+ 	if (TNY_IS_CAMEL_FOLDER (self)) {
+ 		TnyCamelFolderPriv *priv = TNY_CAMEL_FOLDER_GET_PRIVATE (self);
+@@ -5041,6 +5057,7 @@ _tny_camel_folder_set_folder_info (TnyFolderStore *self, TnyCamelFolder *folder,
+ 		_tny_camel_folder_set_account (folder, TNY_ACCOUNT (self));
+ 	}
+ 
++	_tny_camel_folder_set_iter (folder, info);
+ 	_tny_camel_folder_set_parent (folder, self);
+ }
+ 
+@@ -5309,10 +5326,10 @@ _tny_camel_folder_set_folder_type (TnyCamelFolder *folder, CamelFolderInfo *fold
+ 	}
+ }
+ 
+-void 
+-_tny_camel_folder_set_iter (TnyCamelFolder *folder, CamelFolderInfo *iter)
++void
++_tny_camel_folder_set_iter (TnyCamelFolder *self, CamelFolderInfo *iter)
+ {
+-	TnyCamelFolderPriv *priv = TNY_CAMEL_FOLDER_GET_PRIVATE (folder);
++	TnyCamelFolderPriv *priv = TNY_CAMEL_FOLDER_GET_PRIVATE (self);
+ 
+ 	priv->cant_reuse_iter = FALSE;
+ 	priv->iter = iter;
+@@ -5324,6 +5341,32 @@ _tny_camel_folder_set_iter (TnyCamelFolder *folder, CamelFolderInfo *iter)
+ 
+ 	priv->iter_parented = TRUE;
+ 
++	//fill up known-folders with the folders we know about from this iter.
++	if (iter)
++	{
++	  iter = iter->child;
++	  while (iter)
++	  {
++		/* Also take a look at camel-maildir-store.c:525 */
++		if (!(iter->flags & CAMEL_FOLDER_VIRTUAL))
++		{
++			gboolean was_new = FALSE;
++			TnyCamelFolder *folder = (TnyCamelFolder *) tny_camel_store_account_factor_folder (
++				TNY_CAMEL_STORE_ACCOUNT (priv->account),
++				iter->full_name, &was_new);
++
++			if (was_new)
++				_tny_camel_folder_set_folder_info (TNY_FOLDER_STORE(self), folder, iter);
++
++			if (folder && !g_hash_table_lookup_extended (priv->known_folders, folder, NULL, NULL)) {
++				g_hash_table_insert(priv->known_folders, folder, NULL);
++				g_object_weak_ref (G_OBJECT(folder), known_folder_del, self);
++			}
++			g_object_unref (folder);
++		}
++		iter = iter->next;
++	  }
++	}
+ 	return;
+ }
+ 
+@@ -5340,6 +5383,7 @@ tny_camel_folder_get_folders_default (TnyFolderStore *self, TnyList *list, TnyFo
+ 	TnyCamelFolderPriv *priv = TNY_CAMEL_FOLDER_GET_PRIVATE (self);
+ 	CamelFolderInfo *iter;
+ 	TnyAccount *account = NULL;
++	gboolean first_time = FALSE;
+ 
+ 	if (!_tny_session_check_operation (TNY_FOLDER_PRIV_GET_SESSION(priv), 
+ 			priv->account, err, TNY_ERROR_DOMAIN,
+@@ -5366,11 +5410,15 @@ tny_camel_folder_get_folders_default (TnyFolderStore *self, TnyList *list, TnyFo
+ 		g_return_if_fail (priv->folder_name != NULL);
+ 
+ 		if (!refresh && CAMEL_IS_DISCO_STORE(store)) {
+-			priv->iter = CAMEL_DISCO_STORE_CLASS(store)->get_folder_info_offline(store,  priv->folder_name, 0, &ex);
++			iter = CAMEL_DISCO_STORE_CLASS(CAMEL_OBJECT_GET_CLASS(store))->get_folder_info_offline(store,  priv->folder_name, 0, &ex);
+ 		} else {
+-			priv->iter = camel_store_get_folder_info (store, priv->folder_name, 0, &ex);
++			iter = camel_store_get_folder_info (store, priv->folder_name, 0, &ex);
+ 		}
+ 
++		if (iter && priv->iter == NULL)  {
++			first_time = TRUE;
++		}
++		priv->iter = iter;
+ 		priv->cant_reuse_iter = FALSE;
+ 
+ 		if (camel_exception_is_set (&ex))
+@@ -5388,25 +5436,52 @@ tny_camel_folder_get_folders_default (TnyFolderStore *self, TnyList *list, TnyFo
+ 
+ 	iter = priv->iter;
+  
+-	if (iter)
++	if (iter && priv->account)
+ 	{
++	  TnyFolderStoreChange *change = NULL;
++
+ 	  iter = iter->child;
+ 	  while (iter)
+ 	  {
+ 		/* Also take a look at camel-maildir-store.c:525 */
+-		if (!(iter->flags & CAMEL_FOLDER_VIRTUAL) && _tny_folder_store_query_passes (query, iter) && priv->account)
++		if (!(iter->flags & CAMEL_FOLDER_VIRTUAL))
+ 		{
+ 			gboolean was_new = FALSE;
+ 			TnyCamelFolder *folder = (TnyCamelFolder *) tny_camel_store_account_factor_folder (
+-				TNY_CAMEL_STORE_ACCOUNT (priv->account), 
++				TNY_CAMEL_STORE_ACCOUNT (priv->account),
+ 				iter->full_name, &was_new);
++
+ 			if (was_new)
+ 				_tny_camel_folder_set_folder_info (self, folder, iter);
+-			tny_list_prepend (list, G_OBJECT (folder));
++
++			if (folder && !g_hash_table_lookup_extended (priv->known_folders, folder, NULL, NULL)) {
++				g_hash_table_insert(priv->known_folders, folder, NULL);
++				g_object_weak_ref (G_OBJECT(folder), known_folder_del, self);
++
++				if (!change)
++					change = tny_folder_store_change_new (TNY_FOLDER_STORE(self));
++
++
++				if (first_time) {
++					tny_folder_store_change_add_appeared_folder (change, TNY_FOLDER(folder));
++				} else {
++					tny_folder_store_change_add_created_folder (change, TNY_FOLDER(folder));
++				}
++
++			}
++
++			if (_tny_folder_store_query_passes (query, iter)) {
++				tny_list_prepend (list, G_OBJECT (folder));
++			}
+ 			g_object_unref (folder);
+ 		}
+ 		iter = iter->next;
+ 	  }
++	  if (change) {
++		notify_folder_store_observers_about_in_idle (self, change,
++			TNY_FOLDER_PRIV_GET_SESSION (priv));
++		g_object_unref(change);
++	  }
+ 	}
+ 
+ #ifdef MERGEFOLDERTEST
+@@ -5592,18 +5667,16 @@ tny_camel_folder_store_refresh (TnyFolderStore *self, GError **err)
+ 	TnyAccount *account = NULL;
+ 	CamelStore *store = priv->store;
+ 	CamelException ex = CAMEL_EXCEPTION_INITIALISER;
++	gboolean first_time = FALSE;
+ 
+ 	if (!_tny_session_check_operation (TNY_FOLDER_PRIV_GET_SESSION(priv), 
+ 			priv->account, err, TNY_ERROR_DOMAIN,
+ 			TNY_SERVICE_ERROR_GET_FOLDERS))
+ 		return;
+ 
+-	account = tny_folder_get_account (TNY_FOLDER (self));
+-
+ 	g_return_if_fail (priv->folder_name != NULL);
+ 
+-	priv->iter = camel_store_get_folder_info (store, priv->folder_name, 0, &ex);
+-	priv->cant_reuse_iter = FALSE;
++	iter = camel_store_get_folder_info (store, priv->folder_name, 0, &ex);
+ 
+ 	if (camel_exception_is_set (&ex))
+ 	{
+@@ -5615,36 +5688,59 @@ tny_camel_folder_store_refresh (TnyFolderStore *self, GError **err)
+ 			return;
+ 	}
+ 
++	priv->cant_reuse_iter = FALSE;
+ 	priv->iter_parented = FALSE;
+ 
+-	iter = priv->iter;
+- 
+-	if (iter)
++	if (iter && priv->iter == NULL)  {
++		first_time = TRUE;
++	}
++
++	priv->iter = iter;
++
++	if (iter && priv->account)
+ 	{
++	  TnyFolderStoreChange *change = NULL;
+ 	  iter = iter->child;
+ 	  while (iter)
+ 	  {
+ 		/* Also take a look at camel-maildir-store.c:525 */
+-		if (!(iter->flags & CAMEL_FOLDER_VIRTUAL) && priv->account)
++		if (!(iter->flags & CAMEL_FOLDER_VIRTUAL))
+ 		{
+ 			gboolean was_new = FALSE;
+ 			TnyCamelFolder *folder = (TnyCamelFolder *) tny_camel_store_account_factor_folder (
+ 				TNY_CAMEL_STORE_ACCOUNT (priv->account),
+ 				iter->full_name, &was_new);
+-			if (was_new) {
+-				TnyFolderStoreChange *change;
++			if (was_new)
++				_tny_camel_folder_set_folder_info (self, folder, iter);
++
++			if (was_new)
+ 				_tny_camel_folder_set_folder_info (self, folder, iter);
+-				change = tny_folder_store_change_new (TNY_FOLDER_STORE(self));
+-				tny_folder_store_change_add_created_folder (change, TNY_FOLDER(folder));
+-				notify_folder_store_observers_about_in_idle (self,
+-					change,
+-					TNY_FOLDER_PRIV_GET_SESSION (priv));
+-				g_object_unref(change);
++
++			if (folder && !g_hash_table_lookup_extended (priv->known_folders, folder, NULL, NULL)) {
++				g_hash_table_insert(priv->known_folders, folder, NULL);
++				g_object_weak_ref (G_OBJECT(folder), known_folder_del, self);
++
++				if (!change)
++					change = tny_folder_store_change_new (TNY_FOLDER_STORE(self));
++
++
++				if (first_time) {
++					tny_folder_store_change_add_appeared_folder (change, TNY_FOLDER(folder));
++				} else {
++					tny_folder_store_change_add_created_folder (change, TNY_FOLDER(folder));
++				}
++
+ 			}
+ 			g_object_unref (folder);
+ 		}
+ 		iter = iter->next;
+ 	  }
++	  if (change) {
++		notify_folder_store_observers_about_in_idle (self, change,
++			TNY_FOLDER_PRIV_GET_SESSION (priv));
++		g_object_unref(change);
++	  }
++
+ 	}
+ 
+ 
+@@ -6094,10 +6190,20 @@ notify_store_observer_del (gpointer user_data, GObject *observer)
+ 	g_static_rec_mutex_unlock (priv->obs_lock);
+ }
+ 
++static void build_appeared_change (gpointer key,
++                                   gpointer value,
++                                   gpointer user_data)
++{
++	TnyFolder *folder = key;
++	TnyFolderStoreChange *change = user_data;
++	tny_folder_store_change_add_appeared_folder (change, folder);
++}
++
+ static void
+ tny_camel_folder_store_add_observer_default (TnyFolderStore *self, TnyFolderStoreObserver *observer)
+ {
+ 	TnyCamelFolderPriv *priv = TNY_CAMEL_FOLDER_GET_PRIVATE (self);
++	TnyFolderStoreChange *change = tny_folder_store_change_new (self);
+ 
+ 	g_assert (TNY_IS_FOLDER_STORE_OBSERVER (observer));
+ 
+@@ -6108,6 +6214,10 @@ tny_camel_folder_store_add_observer_default (TnyFolderStore *self, TnyFolderStor
+ 	}
+ 	g_static_rec_mutex_unlock (priv->obs_lock);
+ 
++	g_hash_table_foreach (priv->known_folders, build_appeared_change, change);
++	notify_folder_store_observers_about_in_idle (self, change, TNY_FOLDER_PRIV_GET_SESSION (priv));
++	g_object_unref (change);
++
+ 	return;
+ }
+ 
+@@ -6257,6 +6367,9 @@ tny_camel_folder_dispose (GObject *object)
+ 	TnyCamelFolder *self = (TnyCamelFolder*) object;
+ 	TnyCamelFolderPriv *priv = TNY_CAMEL_FOLDER_GET_PRIVATE (self);
+ 
++	g_hash_table_foreach_remove (priv->known_folders, (GHRFunc) known_folder_remover, self);
++	g_hash_table_unref(priv->known_folders);
++
+ 	if (priv->store)
+ 		camel_object_unref (priv->store);
+ 
+@@ -6548,6 +6661,7 @@ tny_camel_folder_instance_init (GTypeInstance *instance, gpointer g_class)
+ 	priv->folder = NULL;
+ 	priv->cached_name = NULL;
+ 	priv->cached_folder_type = TNY_FOLDER_TYPE_UNKNOWN;
++	priv->known_folders = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, NULL);
+ 	priv->remove_strat = tny_camel_msg_remove_strategy_new ();
+ 	priv->receive_strat = tny_camel_full_msg_receive_strategy_new ();
+ 	priv->reason_lock = g_new0 (GStaticRecMutex, 1);
+diff --git a/libtinymail-camel/tny-camel-store-account-priv.h b/libtinymail-camel/tny-camel-store-account-priv.h
+index ea37d0b..0e21081 100644
+--- a/libtinymail-camel/tny-camel-store-account-priv.h
++++ b/libtinymail-camel/tny-camel-store-account-priv.h
+@@ -37,6 +37,7 @@ struct _TnyCamelStoreAccountPriv
+ 	gboolean cant_reuse_iter;
+ 	GStaticRecMutex *factory_lock, *obs_lock;
+ 	TnyCamelQueue *queue, *msg_queue;
++	GHashTable *known_folders;
+ 	gboolean deleted;
+ };
+ 
+diff --git a/libtinymail-camel/tny-camel-store-account.c b/libtinymail-camel/tny-camel-store-account.c
+index 28e635c..4a59043 100644
+--- a/libtinymail-camel/tny-camel-store-account.c
++++ b/libtinymail-camel/tny-camel-store-account.c
+@@ -767,6 +767,8 @@ tny_camel_store_account_instance_init (GTypeInstance *instance, gpointer g_class
+ 	priv->sobs = NULL;
+ 	priv->iter = NULL;
+ 	priv->cant_reuse_iter = TRUE;
++	priv->known_folders = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, NULL);
++
+ 	priv->factory_lock = g_new0 (GStaticRecMutex, 1);
+ 	g_static_rec_mutex_init (priv->factory_lock);
+ 	priv->obs_lock = g_new0 (GStaticRecMutex, 1);
+@@ -798,12 +800,18 @@ notify_store_observer_del (gpointer user_data, GObject *observer)
+ 	g_static_rec_mutex_unlock (priv->obs_lock);
+ }
+ 
++
++static gboolean known_folder_remover (GObject *folder, gpointer value, TnyCamelStoreAccount *self);
++
+ static void
+ tny_camel_store_account_dispose (GObject *object)
+ {
+ 	TnyCamelStoreAccount *self = (TnyCamelStoreAccount *)object;
+ 	TnyCamelStoreAccountPriv *priv = TNY_CAMEL_STORE_ACCOUNT_GET_PRIVATE (self);
+ 
++	g_hash_table_foreach_remove (priv->known_folders, (GHRFunc) known_folder_remover, self);
++	g_hash_table_unref (priv->known_folders);
++
+ 	if (priv->sobs) {
+ 		GList *copy = priv->sobs;
+ 		while (copy) {
+@@ -1313,6 +1321,22 @@ notify_factory_del (TnyCamelStoreAccount *self, GObject *folder)
+ }
+ 
+ 
++static void
++known_folder_del (gpointer user_data, GObject *folder)
++{
++	TnyCamelStoreAccountPriv *priv = TNY_CAMEL_STORE_ACCOUNT_GET_PRIVATE (user_data);
++	g_hash_table_remove (priv->known_folders, folder);
++}
++
++static gboolean
++known_folder_remover (GObject *folder,
++                      gpointer value,
++                      TnyCamelStoreAccount *self)
++{
++	g_object_weak_unref (folder, known_folder_del, self);
++	return TRUE;
++}
++
+ static TnyFolder * 
+ tny_camel_store_account_factor_folder_default (TnyCamelStoreAccount *self, const gchar *full_name, gboolean *was_new)
+ {
+@@ -1357,6 +1381,7 @@ tny_camel_store_account_get_folders_default (TnyFolderStore *self, TnyList *list
+ 	TnyCamelStoreAccountPriv *priv = TNY_CAMEL_STORE_ACCOUNT_GET_PRIVATE (self);    
+ 	CamelException ex = CAMEL_EXCEPTION_INITIALISER;    
+ 	CamelFolderInfo *iter=NULL; guint32 flags; CamelStore *store;
++	gboolean first_time = FALSE;
+ 	
+ 	g_assert (TNY_IS_LIST (list));
+ 	g_assert (CAMEL_IS_SESSION (apriv->session));
+@@ -1403,9 +1428,9 @@ tny_camel_store_account_get_folders_default (TnyFolderStore *self, TnyList *list
+ 
+ 	if (!iter || priv->cant_reuse_iter) {
+ 		if (!refresh && CAMEL_IS_DISCO_STORE(store)) {
+-			priv->iter = CAMEL_DISCO_STORE_CLASS(store)->get_folder_info_offline(store,  "", 0, &ex);
++			iter = CAMEL_DISCO_STORE_CLASS(CAMEL_OBJECT_GET_CLASS(store))->get_folder_info_offline(store,  "", 0, &ex);
+ 		} else {
+-			priv->iter = camel_store_get_folder_info (store, "", 0, &ex);
++			iter = camel_store_get_folder_info (store, "", 0, &ex);
+ 		}
+ 
+ 	}
+@@ -1424,6 +1449,11 @@ tny_camel_store_account_get_folders_default (TnyFolderStore *self, TnyList *list
+ 			return;
+ 	}
+ 
++	if (iter && priv->iter == NULL)  {
++		first_time = TRUE;
++	}
++
++
+ 	priv->iter = iter;
+ 	priv->cant_reuse_iter = FALSE;
+ 
+@@ -1434,33 +1464,53 @@ tny_camel_store_account_get_folders_default (TnyFolderStore *self, TnyList *list
+ 	camel_object_ref (CAMEL_OBJECT (store));
+ 	priv->iter_store = store;
+ 
+-	if (iter)
+-	{
+-	  while (iter)
+-	  {
+-		/* Also take a look at camel-maildir-store.c:525 */
+-		if (!(iter->flags & CAMEL_FOLDER_VIRTUAL) && _tny_folder_store_query_passes (query, iter))
+-		{
+-			gboolean was_new = FALSE;
+ 
+-			TnyCamelFolder *folder = (TnyCamelFolder *) tny_camel_store_account_factor_folder (
+-				TNY_CAMEL_STORE_ACCOUNT (self), 
+-				iter->full_name, &was_new);
++	if (iter) {
++		TnyFolderStoreChange *change = NULL;
+ 
+-			if (was_new && folder != NULL)
+-				_tny_camel_folder_set_folder_info (self, folder, iter);
++		while (iter) {
++			/* Also take a look at camel-maildir-store.c:525 */
++			if (!(iter->flags & CAMEL_FOLDER_VIRTUAL)) {
++				gboolean was_new = FALSE;
+ 
+-			if (folder != NULL)
+-			{
+-				const gchar *name = tny_folder_get_name (TNY_FOLDER(folder));
+-				/* TNY TODO: Temporary fix for empty root folders */
+-				if (name && strlen(name) > 0)
+-					tny_list_prepend (list, G_OBJECT (folder));
++				TnyCamelFolder *folder = (TnyCamelFolder *) tny_camel_store_account_factor_folder (
++					TNY_CAMEL_STORE_ACCOUNT (self),
++					iter->full_name, &was_new);
++
++				if (folder != NULL && was_new)
++					_tny_camel_folder_set_folder_info (self, folder, iter);
++
++				if (folder && !g_hash_table_lookup_extended (priv->known_folders, folder, NULL, NULL)) {
++					g_hash_table_insert(priv->known_folders, folder, NULL);
++					g_object_weak_ref (G_OBJECT(folder), known_folder_del, self);
++
++					if (!change)
++						change = tny_folder_store_change_new (TNY_FOLDER_STORE(self));
++
++
++					if (first_time) {
++						tny_folder_store_change_add_appeared_folder (change, TNY_FOLDER(folder));
++					} else {
++						tny_folder_store_change_add_created_folder (change, TNY_FOLDER(folder));
++					}
++
++				}
++
++				if (folder != NULL && _tny_folder_store_query_passes (query, iter))
++				{
++					const gchar *name = tny_folder_get_name (TNY_FOLDER(folder));
++					/* TNY TODO: Temporary fix for empty root folders */
++					if (name && strlen(name) > 0)
++						tny_list_prepend (list, G_OBJECT (folder));
++				}
+ 				g_object_unref (G_OBJECT (folder));
+ 			}
++			iter = iter->next;
++		}
++		if (change) {
++			notify_folder_store_observers_about_in_idle (self, change);
++			g_object_unref(change);
+ 		}
+-		iter = iter->next;
+-	  }
+ 	}
+ 
+ 	_tny_session_stop_operation (apriv->session);
+@@ -1619,6 +1669,7 @@ tny_camel_store_account_store_refresh (TnyFolderStore *self, GError **err)
+ 	TnyCamelStoreAccountPriv *priv = TNY_CAMEL_STORE_ACCOUNT_GET_PRIVATE (self);
+ 	CamelException ex = CAMEL_EXCEPTION_INITIALISER;
+ 	CamelFolderInfo *iter=NULL; guint32 flags; CamelStore *store;
++	gboolean first_time = FALSE;
+ 
+ 	g_assert (CAMEL_IS_SESSION (apriv->session));
+ 
+@@ -1655,7 +1706,7 @@ tny_camel_store_account_store_refresh (TnyFolderStore *self, GError **err)
+ 		flags |= CAMEL_STORE_FOLDER_INFO_SUBSCRIBED;
+ 
+ 
+-	priv->iter = camel_store_get_folder_info (store, "", 0, &ex);
++	iter = camel_store_get_folder_info (store, "", 0, &ex);
+ 
+ 	if (camel_exception_is_set (&ex))
+ 	{
+@@ -1667,41 +1718,55 @@ tny_camel_store_account_store_refresh (TnyFolderStore *self, GError **err)
+ 		return;
+ 	}
+ 
+-	priv->cant_reuse_iter = FALSE;
++	if (iter && priv->iter == NULL)  {
++		first_time = TRUE;
++	}
+ 
++	priv->cant_reuse_iter = FALSE;
+ 	camel_object_ref (CAMEL_OBJECT (store));
+ 	priv->iter_store = store;
++	priv->iter = iter;
+ 
+-	iter = priv->iter;
++	if (iter) {
++		TnyFolderStoreChange *change = NULL;
+ 
+-	if (iter)
+-	{
+-	  iter = iter->child;
+-	  while (iter)
+-	  {
+-		/* Also take a look at camel-maildir-store.c:525 */
+-		if (!(iter->flags & CAMEL_FOLDER_VIRTUAL))
+-		{
+-			gboolean was_new = FALSE;
+-			TnyCamelFolder *folder = (TnyCamelFolder *) tny_camel_store_account_factor_folder (
+-				TNY_CAMEL_STORE_ACCOUNT (self),
+-				iter->full_name, &was_new);
+-			if (was_new) {
+-				TnyFolderStoreChange *change;
+-				_tny_camel_folder_set_folder_info (self, folder, iter);
+-				change = tny_folder_store_change_new (TNY_FOLDER_STORE(self));
+-				tny_folder_store_change_add_created_folder (change, TNY_FOLDER(folder));
+-				notify_folder_store_observers_about_in_idle (self,
+-					change);
+-				g_object_unref(change);
++		while (iter) {
++			/* Also take a look at camel-maildir-store.c:525 */
++			if (!(iter->flags & CAMEL_FOLDER_VIRTUAL)) {
++				gboolean was_new = FALSE;
++
++				TnyCamelFolder *folder = (TnyCamelFolder *) tny_camel_store_account_factor_folder (
++					TNY_CAMEL_STORE_ACCOUNT (self),
++					iter->full_name, &was_new);
++
++				if (folder != NULL && was_new)
++					_tny_camel_folder_set_folder_info (self, folder, iter);
++
++				if (folder && !g_hash_table_lookup_extended (priv->known_folders, folder, NULL, NULL)) {
++					g_hash_table_insert(priv->known_folders, folder, NULL);
++					g_object_weak_ref (G_OBJECT(folder), known_folder_del, self);
++
++					if (!change)
++						change = tny_folder_store_change_new (TNY_FOLDER_STORE(self));
++
++
++					if (first_time) {
++						tny_folder_store_change_add_appeared_folder (change, TNY_FOLDER(folder));
++					} else {
++						tny_folder_store_change_add_created_folder (change, TNY_FOLDER(folder));
++					}
++				}
++
++				g_object_unref(folder);
+ 			}
+-			g_object_unref (folder);
++			iter = iter->next;
++		}
++		if (change) {
++			notify_folder_store_observers_about_in_idle (self, change);
++			g_object_unref(change);
+ 		}
+-		iter = iter->next;
+-	  }
+ 	}
+ 
+-
+ 	_tny_session_stop_operation (apriv->session);
+ 
+ 	return;
+@@ -1833,10 +1898,21 @@ tny_camel_store_account_add_observer (TnyFolderStore *self, TnyFolderStoreObserv
+ 	TNY_CAMEL_STORE_ACCOUNT_GET_CLASS (self)->add_observer(self, observer);
+ }
+ 
++static void build_appeared_change (gpointer key,
++                                   gpointer value,
++                                   gpointer user_data)
++{
++	TnyFolder *folder = key;
++	TnyFolderStoreChange *change = user_data;
++	tny_folder_store_change_add_appeared_folder (change, folder);
++}
++
++
+ static void
+ tny_camel_store_account_add_observer_default (TnyFolderStore *self, TnyFolderStoreObserver *observer)
+ {
+ 	TnyCamelStoreAccountPriv *priv = TNY_CAMEL_STORE_ACCOUNT_GET_PRIVATE (self);
++	TnyFolderStoreChange *change = tny_folder_store_change_new (self);
+ 
+ 	g_assert (TNY_IS_FOLDER_STORE_OBSERVER (observer));
+ 
+@@ -1847,11 +1923,13 @@ tny_camel_store_account_add_observer_default (TnyFolderStore *self, TnyFolderSto
+ 	}
+ 	g_static_rec_mutex_unlock (priv->obs_lock);
+ 
++	g_hash_table_foreach (priv->known_folders, build_appeared_change, change);
++	notify_folder_store_observers_about_in_idle (self, change);
++	g_object_unref (change);
++
+ 	return;
+ }
+ 
+-
+-
+ static void
+ tny_camel_store_account_remove_observer (TnyFolderStore *self, TnyFolderStoreObserver *observer)
+ {
+diff --git a/libtinymail/tny-folder-store-change.c b/libtinymail/tny-folder-store-change.c
+index 3ac9bb1..118b715 100644
+--- a/libtinymail/tny-folder-store-change.c
++++ b/libtinymail/tny-folder-store-change.c
+@@ -36,7 +36,7 @@ typedef struct _TnyFolderStoreChangePriv TnyFolderStoreChangePriv;
+ 
+ struct _TnyFolderStoreChangePriv
+ {
+-	TnyList *created, *removed;
++	TnyList *created, *removed, *appeared;
+ 	GMutex *lock;
+ 	TnyFolderStore *folderstore;
+ 	TnyFolderStoreChangeChanged changed;
+@@ -125,6 +125,35 @@ tny_folder_store_change_add_removed_folder (TnyFolderStoreChange *self, TnyFolde
+ }
+ 
+ /**
++ * tny_folder_store_change_add_appeared_folder:
++ * @self: a #TnyFolderStoreChange
++ * @folder: a #TnyFolder to add to the changeset
++ *
++ * Add @folder to the changeset of appeared folders. This is an internal
++ * function not intended for application developers to alter.
++ *
++ * since: 1.0
++ * audience: tinymail-developer
++ **/
++void 
++tny_folder_store_change_add_appeared_folder (TnyFolderStoreChange *self, TnyFolder *folder)
++{
++	TnyFolderStoreChangePriv *priv = TNY_FOLDER_STORE_CHANGE_GET_PRIVATE (self);
++
++	g_mutex_lock (priv->lock);
++
++	if (!priv->appeared)
++		priv->appeared = tny_simple_list_new ();
++	tny_list_prepend (priv->appeared, G_OBJECT (folder));
++	priv->changed |= TNY_FOLDER_STORE_CHANGE_CHANGED_APPEARED_FOLDERS;
++
++	g_mutex_unlock (priv->lock);
++
++	return;
++}
++
++
++/**
+  * tny_folder_store_change_get_created_folders:
+  * @self: a #TnyFolderStoreChange
+  * @folders: a #TnyList where the created folders will be prepended to
+@@ -168,8 +197,6 @@ tny_folder_store_change_get_created_folders (TnyFolderStoreChange *self, TnyList
+ }
+ 
+ 
+-
+-
+ /**
+  * tny_folder_store_change_get_removed_folders:
+  * @self: a #TnyFolderStoreChange
+@@ -213,6 +240,51 @@ tny_folder_store_change_get_removed_folders (TnyFolderStoreChange *self, TnyList
+ 	return;
+ }
+ 
++
++
++/**
++ * tny_folder_store_change_get_appeared_folders:
++ * @self: a #TnyFolderStoreChange
++ * @folders: a #TnyList where the appeared folders will be prepended to
++ *
++ * Get the appeared folders in this changeset
++ *
++ * since: 1.0
++ * audience: application-developer
++ **/
++void 
++tny_folder_store_change_get_appeared_folders (TnyFolderStoreChange *self, TnyList *folders)
++{
++	TnyFolderStoreChangePriv *priv = TNY_FOLDER_STORE_CHANGE_GET_PRIVATE (self);
++	TnyIterator *iter;
++
++	g_assert (TNY_IS_LIST (folders));
++
++	g_mutex_lock (priv->lock);
++
++	if (!priv->appeared)
++	{
++		g_mutex_unlock (priv->lock);
++		return;
++	}
++
++	iter = tny_list_create_iterator (priv->appeared);
++
++	while (!tny_iterator_is_done (iter))
++	{
++		GObject *folder = tny_iterator_get_current (iter);
++		tny_list_prepend (folders, folder);
++		g_object_unref (folder);
++		tny_iterator_next (iter);
++	}
++
++	g_object_unref (iter);
++
++	g_mutex_unlock (priv->lock);
++
++	return;
++}
++
+ /**
+  * tny_folder_store_change_reset:
+  * @self: a #TnyFolderStoreChange
+@@ -321,8 +393,11 @@ tny_folder_store_change_finalize (GObject *object)
+ 		g_object_unref (G_OBJECT (priv->created));
+ 	if (priv->removed)
+ 		g_object_unref (G_OBJECT (priv->removed));
++	if (priv->appeared)
++		g_object_unref (G_OBJECT (priv->appeared));
+ 	priv->created = NULL;
+ 	priv->removed = NULL;
++	priv->appeared = NULL;
+ 
+ 	if (priv->folderstore)
+ 		g_object_unref (G_OBJECT (priv->folderstore));
+diff --git a/libtinymail/tny-folder-store-change.h b/libtinymail/tny-folder-store-change.h
+index c49e97a..7e8742f 100644
+--- a/libtinymail/tny-folder-store-change.h
++++ b/libtinymail/tny-folder-store-change.h
+@@ -45,7 +45,8 @@ typedef struct _TnyFolderStoreChangeClass TnyFolderStoreChangeClass;
+ enum _TnyFolderStoreChangeChanged
+ {
+ 	TNY_FOLDER_STORE_CHANGE_CHANGED_CREATED_FOLDERS = 1<<0,
+-	TNY_FOLDER_STORE_CHANGE_CHANGED_REMOVED_FOLDERS = 1<<1
++	TNY_FOLDER_STORE_CHANGE_CHANGED_REMOVED_FOLDERS = 1<<1,
++	TNY_FOLDER_STORE_CHANGE_CHANGED_APPEARED_FOLDERS = 1<<2
+ };
+ 
+ typedef enum _TnyFolderStoreChangeChanged TnyFolderStoreChangeChanged;
+@@ -68,9 +69,11 @@ TnyFolderStoreChange* tny_folder_store_change_new (TnyFolderStore *folderstore);
+ 
+ void tny_folder_store_change_add_created_folder (TnyFolderStoreChange *self, TnyFolder *folder);
+ void tny_folder_store_change_add_removed_folder (TnyFolderStoreChange *self, TnyFolder *folder);
++void tny_folder_store_change_add_appeared_folder (TnyFolderStoreChange *self, TnyFolder *folder);
+ 
+ void tny_folder_store_change_get_created_folders (TnyFolderStoreChange *self, TnyList *folders);
+ void tny_folder_store_change_get_removed_folders (TnyFolderStoreChange *self, TnyList *folders);
++void tny_folder_store_change_get_appeared_folders (TnyFolderStoreChange *self, TnyList *folders);
+ 
+ void tny_folder_store_change_reset (TnyFolderStoreChange *self);
+ TnyFolderStore* tny_folder_store_change_get_folder_store (TnyFolderStoreChange *self);
+-- 
+1.5.6.3
+

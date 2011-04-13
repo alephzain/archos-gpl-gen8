@@ -1,0 +1,370 @@
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/poppler/Makefile.am poppler-0.5.1/poppler/Makefile.am
+--- poppler-0.5.1.orig/poppler/Makefile.am	2006-02-28 23:05:27.000000000 +0100
++++ poppler-0.5.1/poppler/Makefile.am	2009-03-31 15:48:25.000000000 +0200
+@@ -142,8 +142,6 @@
+ 	CompactFontTables.h	\
+ 	ErrorCodes.h		\
+ 	NameToUnicodeTable.h	\
+-	PSOutputDev.h		\
+-	TextOutputDev.h		\
+ 	SecurityHandler.h	\
+ 	UGooString.h		\
+ 	UTF8.h			\
+@@ -194,8 +192,6 @@
+ 	UnicodeMap.cc		\
+ 	UnicodeTypeTable.cc	\
+ 	XRef.cc			\
+-	PSOutputDev.cc		\
+-	TextOutputDev.cc	\
+ 	PageLabelInfo.h		\
+ 	PageLabelInfo.cc	\
+ 	SecurityHandler.cc	\
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/qt/Makefile.am poppler-0.5.1/qt/Makefile.am
+--- poppler-0.5.1.orig/qt/Makefile.am	2006-02-28 23:51:10.000000000 +0100
++++ poppler-0.5.1/qt/Makefile.am	2009-03-31 15:48:25.000000000 +0200
+@@ -27,18 +27,3 @@
+ 	$(FREETYPE_LIBS)
+ 
+ libpoppler_qt_la_LDFLAGS = -version-info 1:0:0
+-
+-if BUILD_SPLASH_OUTPUT
+-
+-noinst_PROGRAMS = test-poppler-qt
+-
+-endif
+-
+-test_poppler_qt_SOURCES =			\
+-       test-poppler-qt.cpp
+-
+-test_poppler_qt_LDADD =				\
+-	$(top_builddir)/poppler/libpoppler.la	\
+-	libpoppler-qt.la			\
+-	$(POPPLER_QT_LIBS)			\
+-	$(FREETYPE_LIBS)
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/qt/poppler-page.cc poppler-0.5.1/qt/poppler-page.cc
+--- poppler-0.5.1.orig/qt/poppler-page.cc	2009-03-31 15:48:25.000000000 +0200
++++ poppler-0.5.1/qt/poppler-page.cc	2009-03-31 15:48:25.000000000 +0200
+@@ -20,12 +20,18 @@
+ #include <poppler-qt.h>
+ #include <qfile.h>
+ #include <qimage.h>
++#include <qpainter.h>
+ #include <GlobalParams.h>
+ #include <PDFDoc.h>
++#include <UGooString.h>
++#include <Link.h>
+ #include <Catalog.h>
++#include <Object.h>
+ #include <ErrorCodes.h>
+ #include <SplashOutputDev.h>
++#if 0
+ #include <TextOutputDev.h>
++#endif
+ #include <splash/SplashBitmap.h>
+ #include "poppler-private.h"
+ #include "poppler-page-transition-private.h"
+@@ -41,17 +47,20 @@
+   PageTransition *transition;
+ };
+ 
+-Page::Page(const Document *doc, int index) {
++Page::Page(const Document *doc, int index) : links(0) {
+   data = new PageData();
+   data->index = index;
+   data->doc = doc;
+   data->transition = 0;
++
++  setupLinks();
+ }
+ 
+ Page::~Page()
+ {
+   delete data->transition;
+   delete data;
++  delete links;
+ }
+ 
+ void Page::renderToPixmap(QPixmap **q, int x, int y, int w, int h)
+@@ -83,7 +92,7 @@
+ 
+   img.create(bw, bh, 32, 0, QImage::IgnoreEndian);
+   int rowSize = output_dev->getBitmap()->getRowSize();
+-  printf("qt rowSize = %i", rowSize);
++  //printf("qt rowSize = %i", rowSize);
+ 
+   for (int i = 0; i < bh; i++) {
+       memcpy(img.scanLine(i), color_ptr + i * rowSize, bw * 4);
+@@ -139,6 +148,118 @@
+   }
+ }
+ 
++void Page::setupLinks()
++{
++  Catalog* catalog = data->doc->data->doc.getCatalog();
++  //qWarning("PageSize h = %i; w = %i", pageSize().width(), pageSize().height());
++
++  if (links == 0) {
++    Object obj;
++    ::Page *p = catalog->getPage(data->index + 1);
++    links = new ::Links(p->getAnnots(&obj), catalog->getBaseURI());
++    obj.free();
++  }
++}
++
++Poppler::Links Page::getLinks()
++{
++  Poppler::Links ret;
++  int linkCnt = links->getNumLinks();
++  for (int i = 0; i < linkCnt; i++) {
++    ::Link *l = links->getLink(i);
++    if (l->getAction()->getKind() == actionGoTo) {
++      double x1, y1, x2, y2;
++      int x1t, y1t, x2t, y2t;
++      l->getRect(&x1, &y1, &x2, &y2);
++      //qWarning("x1 = %f y1 = %f x2 = %f y2 = %f", x1, y1, x2, y2);
++      SplashOutputDev *output = data->doc->data->getOutputDev();
++      output->cvtUserToDev( x1, y1, &x1t, &y1t );
++      output->cvtUserToDev( x2, y2, &x2t, &y2t );
++      //qWarning("x1t = %i  y1t = %i x2t = %i  y2t = %i", x1t, y1t, x2t, y2t);
++      ret.addLink(x1t, y1t, x2t, y2t, i);
++    }
++  }
++  return ret;
++}
++
++int Page::linkId(double x, double y) const
++{
++  int ret = -1;
++  int linkCnt = links->getNumLinks();
++  if (linkCnt <= 0)
++    return ret;
++
++  QPoint pdfCoords = translatePoint(x, y);
++  for (int i = 0; i < linkCnt; i++) {
++    ::Link *l = links->getLink(i);
++    if (l->inRect(pdfCoords.x(), pdfCoords.y())) {
++      //qWarning("clicked on link %i", i);
++      ret = i;
++      break;
++    }
++  }
++  return ret;
++}
++
++int Page::linkDest(double x, double y) const
++{
++    QPoint pdfCoords = translatePoint(static_cast<int>(x), static_cast<int>(y));
++    //qWarning("pdfCoords x = %i y = %i", pdfCoords.x(), pdfCoords.y());
++    LinkAction *action = links->find(pdfCoords.x(), pdfCoords.y());
++    int dstPage = -1;
++    Catalog *catalog = data->doc->data->doc.getCatalog();
++
++    if (action && action->getKind() == actionGoTo) {
++        LinkGoTo* lgt = (LinkGoTo*)action;
++        LinkDest *dst = lgt->getDest();
++        if (!dst) {
++            UGooString *namedDst = lgt->getNamedDest();
++            if (namedDst) {
++                dst = catalog->findDest(lgt->getNamedDest());
++            }
++        }
++
++        if (dst) {
++          if (dst->isPageRef()) {
++            Ref pageref = dst->getPageRef();
++            dstPage = catalog->findPage(pageref.num,pageref.gen);
++          }
++          else {
++            dstPage = dst->getPageNum();
++          }
++        }
++    }
++
++    // HACK sometimes the pdf page count start at 0 and sometimes 1
++    if (dstPage != -1) {
++        dstPage--;
++    }
++    return dstPage;
++}
++
++// x/y are coordinates within the pixmap
++bool Page::isLink(int x, int y)
++{
++    //qWarning("we check if %i %i is a link", x, y);
++    QPoint pdfCoords = translatePoint(x, y);
++    //qWarning("(translated)we check if %i %i is a link %i",
++    //  pdfCoords.x(), pdfCoords.y(), links->onLink(pdfCoords.x(), pdfCoords.y()));
++    return links->onLink(pdfCoords.x(), pdfCoords.y());
++}
++
++QPoint Page::translatePoint(int x1, int y1) const
++{
++  double xt, yt;
++  SplashOutputDev *output = data->doc->data->getOutputDev();
++  output->cvtDevToUser( (double)x1, (double)y1, &xt, &yt );
++  //qWarning("xt = %f  yt = %f", xt, yt);
++  double nl = (double)xt,
++         nt = (double)yt;
++  //qWarning("nl = %f  nt = %f", nl, nt);
++  return QPoint(static_cast<int>(nl), static_cast<int>(nt));
++}
++
++#if 0
+ QString Page::getText(const Rectangle &r) const
+ {
+   TextOutputDev *output_dev;
+@@ -206,6 +327,7 @@
+   
+   return output_list;
+ }
++#endif
+ 
+ PageTransition *Page::getTransition() const
+ {
+diff -urN -X /home/marc/dontdiff poppler-0.5.1.orig/qt/poppler-qt.h poppler-0.5.1/qt/poppler-qt.h
+--- poppler-0.5.1.orig/qt/poppler-qt.h	2009-03-31 15:48:24.000000000 +0200
++++ poppler-0.5.1/qt/poppler-qt.h	2009-03-31 15:48:25.000000000 +0200
+@@ -24,10 +24,14 @@
+ #include <qdatetime.h>
+ #include <qpixmap.h>
+ #include <qvaluelist.h>
++#include <qrect.h>
++#include <qpoint.h>
+ 
+ #include <poppler-page-transition.h>
+ 
+ class SplashOutputDev;
++class Links;
++class QPixmap;
+ 
+ namespace Poppler {
+ 
+@@ -48,6 +52,7 @@
+     double m_y2;
+ };
+ 
++#if 0
+ class TextBox
+ {
+  public:
+@@ -61,6 +66,7 @@
+     QString m_text;
+     Rectangle m_bBox;
+ };
++#endif
+ 
+ 
+ /**
+@@ -123,6 +129,7 @@
+   FontInfoData *data;
+ };
+ 
++class Links;
+ class PageData;
+ class Page {
+   friend class Document;
+@@ -169,16 +176,16 @@
+     * Returns the text that is inside the Rectangle r
+     * If r is a null Rectangle all text of the page is given
+     **/
+-    QString getText(const Rectangle &r) const;
++    //QString getText(const Rectangle &r) const;
+ 
+-    QValueList<TextBox*> textList() const;
++    //QValueList<TextBox*> textList() const;
+ 
+     /**
+     * Returns the transition of this page
+     **/
+     PageTransition *getTransition() const;
+ 
+-    enum Orientation {
++	enum Orientation {
+       Landscape,
+       Portrait,
+       Seascape,
+@@ -189,11 +196,20 @@
+     *  The orientation of the page
+     **/
+     Orientation orientation() const;
+-    
++
++    bool isLink(int x, int y);
++    int linkDest(double x, double y) const;
++    Poppler::Links Page::getLinks();
++    int linkId(double x, double y) const;
++    QPoint translatePoint(int x1, int y1) const;
++
+   private:
+     SplashOutputDev *output_dev;
+     Page(const Document *doc, int index);
+     PageData *data;
++
++    ::Links *links;
++    void setupLinks();
+ };
+ 
+ class DocumentData;
+@@ -220,7 +236,7 @@
+   
+   bool unlock(const QCString &password);
+   
+-  bool isLocked() const;
++  bool isLocked() const; 
+   
+   QDateTime getDate( const QString & data ) const;
+   QString getInfo( const QString & data ) const;
+@@ -259,5 +275,53 @@
+   Document(DocumentData *dataA);
+ };
+ 
++class Link {
++
++  public:
++    Link() : _id(-1) {};
++    Link(int x1, int y1, int x2, int y2, int id) :
++      _x1(x1), _y1(y1), _x2(x2), _y2(y2), _id(id) {};
++
++    QRect getScreenCoords() const
++    {
++      return QRect(QPoint(_x1, _y1), QPoint( _x2, _y2)).normalize();
++    }
++
++    int getId() { return _id; };
++
++    QPoint getLinkCenterScreenCoord() const
++    {
++      return QPoint(static_cast<int>(_x1 + (_x2 - _x1) / (float)2),
++                    static_cast<int>(_y1 + (_y2 - _y1) / (float)2));
++    }
++
++  private:
++    int _x1, _y1, _x2, _y2;
++    int _id;
++};
++
++class Links {
++
++  public:
++
++    void addLink(int x1, int y1, int x2, int y2, int id) {
++      _links.append(Link(x1, y1, x2, y2, id));
++    }
++
++    int getNumLinks() { return _links.count(); }
++
++    Link getLink(int i) {
++      if (i >= 0 && i < getNumLinks()) {
++        return _links[i];
++      }
++      else {
++        return Link();
++      }
++    }
++
++  private:
++    QValueList<Poppler::Link> _links;
++};
++
+ }
+ #endif

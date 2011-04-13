@@ -1,0 +1,5 @@
+config BR2_PACKAGE_HOSTAPD
+	bool "hostapd"
+	default n
+	help
+		hostapd : simulates access point

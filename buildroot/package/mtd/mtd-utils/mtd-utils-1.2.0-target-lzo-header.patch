@@ -1,0 +1,12 @@
+diff -Nur mtd-utils-1.2.0-orig/compr_lzo.c mtd-utils-1.2.0/compr_lzo.c
+--- mtd-utils-1.2.0-orig/compr_lzo.c	2009-06-15 18:57:46.000000000 +0200
++++ mtd-utils-1.2.0/compr_lzo.c	2009-06-15 18:58:00.000000000 +0200
+@@ -26,7 +26,7 @@
+ #include <string.h>
+ #include <asm/types.h>
+ #include <linux/jffs2.h>
+-#include <lzo/lzo1x.h>
++#include <lzo1x.h>
+ #include "compr.h"
+ 
+ extern int page_size;

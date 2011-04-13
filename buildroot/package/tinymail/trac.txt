@@ -1,0 +1,168 @@
+==== COMMITS ====
+
+0024/r3730: r3767 by robtaylor
+    In pop3 provider, do a LIST before a folder sync so failure doesnt happen
+0033/r3730: r3765 by robtaylor
+    Fix saving and loading of namespaces in the summary.
+            r3763 by jdapena
+    libtinymail-camel/camel-lite/camel/providers/imap/camel-imap-store.c
+            r3759 by svillar
+    Fixed an invalid read when reporting an exception
+            r3757 by jdapena
+    libtinymail-camel/tny-camel-mime-part.c
+            r3756 by svillar
+    Reverted part of the changes between revisions 3710 and 3711 because
+            r3754 by svillar
+    Do not add a message retrieval (with both get_msg_async and
+0027/r3730: r3752 by robtaylor
+    Make account_store weak-referenced in TnySessionCamel.
+0016/r3730: r3751 by robtaylor
+    Fix some valgrind warnings in camel imap provider.
+0026/r3730: r3750 by robtaylor
+    Make the sofar/oftotal field in TnyProgress? more sensible when one of the
+0014/r3730: r3749 by robtaylor
+    Correctly change the unread and total message numbers after a status_poke
+0001/r3730: r3748 by robtaylor
+    Do unrefs in dispose, not finalise for tny-camel-folder and
+            r3747 by pvanhoof
+    Compiler warnings
+0023/r3730: r3746 by pvanhoof
+    2008-08-28 Martin Bonnin <martinbonnin@gmail.com>
+            r3745 by pvanhoof
+    2008-08-27 Martin Bonnin <martinbonnin@gmail.com>
+            r3741 by svillar
+    Fixed several memory leaks
+            r3740 by svillar
+    Fixed a memory leak
+            r3739 by svillar
+    Merged a memory leak fix from upstream
+            r3737 by svillar
+    Change in tny_camel_folder_finalize
+0015/r3730: r3736 by svillar
+    Commited patch by Thomas Monjalon regarding text to UTF-8 conversions
+            r3734 by svillar
+    Fixed a neverending poll when connection goes down.
+            r3733 by svillar
+    Adds a check that prevents a crash
+            r3732 by svillar
+    Merged a bugfix from Camel upstream (revision 9244)
+            r3731 by jdapena
+    libtinymail-camel/camel-lite/camel/providers/imap/camel-imap-store.c:
+
+
+==== PATCHS ====
+
+r3736: 0015/r3730
+    do_not_convert_html_to_utf8
+
+r3746: 0023/r3730
+    fix typo
+
+r3748: mail 01 approved: 0001/r3730
+    Do unrefs in dispose, not finalise for tny-camel-folder and tny-camel-store-account.
+
+mail 02 approved: 0001/r3767: 0002/r3730
+    Give tny_folder_store_get_folders a refresh parameter, for optionally not refreshing from the server. Add tny_folder_store_refresh_async that will asynchronously refresh the store from the server, emitting TnyFolderStoreChanged events to observers. Implement it all for camel.
+
+mail 03: 0002/r3767: 0003/r3730
+    New observer behaviour. Observers will get folders_appeared events when a tny_folder_store_refresh or tny_folder_store_get_folders occurs and the cache is loaded for the first time. They get folders_created events when a new folder appears that we didn't know about before.
+
+mail 03: 0002/r3767: 0004/r3730
+    Notify observers about existing folders when they're attached.
+
+mail 03: 0002/r3767: 0009/r3730
+    The known-folders hashtable for folder-store implementations should use weak references to avoid circular references.
+
+mail 03: 0002/r3767: 0006/r3730
+    Bugfix in new folders_appeared code - first refresh of a store account was emitting folders as created and appeared.
+
+mail 03: 0002/r3767: 0007/r3730
+    tny_camel_folder_store_refresh was leaking a reference to the account due to bad copy+paste.
+
+mail 03: 0002/r3767: 0008/r3730
+    Unref 'appeared' folders on finalise of tny_folder_store_change
+
+mail 04 approved: 0003/r3767: 0005/r3730
+    Change all usage of tny_folder_store_get_folders over to the new api
+
+mail 05 approved: 0004/r3767: 0010/r3730
+    Attempt to fix the queue<->account refcount loop in a thread safe way. Its now implicit that the lifetime of the queue muct be within the lifetime of the parent.
+
+mail 06 bugged: modified 0005/r3767: 0011/r3730
+    Fix ref leak with the iter_store in tny_camel_store_account.
+
+mail 07 approved: 0006/r3767: 0012/r3730
+    Add tny_camel_queue_stop, to allow an application to request that all operations on an account stop and that no more operations ar started.
+
+mail 07 approved: 0006/r3767: 0013/r3730
+    do not create two queues
+
+r3749: mail 08 approved: 0014/r3730
+    update read and total after poke
+
+mail 09 approved: 0007/r3767
+	Dont leak CamelCertDB after camel_shutdown
+
+mail 10: 0008/r3767: 0021/r3730
+    fix tny camel folder store
+
+mail 10: 0008/r3767: 0030/r3730
+    Initalise the observer mixin in TnyCamelSendQueue's init.
+
+mail 11 approved: 0009/r3767: 0019/r3730
+    Add tny_camel_send_queue_new_with_folders to create a TnyCamelSendQueue with user-created folders
+
+mail 11 approved: 0009/r3767: 0034/r3730
+    do not create maildirs
+
+mail 11 approved: 0009/r3767: 0035/r3730
+    fix send queue refcounting
+
+mail 12 approved: 0010/r3767: 0017/r3730
+    add merge folder store
+
+mail 12 approved: 0010/r3767: 0018/r3730
+    fixup autotools for 0017
+
+mail 12 approved: 0010/r3767: 0020/r3730
+    fix merge folder store
+
+mail 12 approved: 0010/r3767: 0028/r3730
+    Add observer mixin to libtinymail. We really need to put this somewhere common.
+
+mail 12 approved: 0010/r3767: 0031/r3730
+    Handle observers correctly in the TnyMergeFolderStore
+
+mail 12 approved: 0010/r3767: 0036/r3730
+    observer mixin wutout ui lock
+
+r3767: mail 13 approved: 0024/r3730
+    pop3 LIST before sync
+
+r3750: mail 14 approved: 0026/r3730
+    Make the sofar/oftotal field in TnyProgress more sensible when one of the is negative. In general one of these ill be negative right at the start of an operation, and if one is 0, then the other is generally gibberish, so 0/0 is more sensible.
+
+mail 15 approved: 0011/r3767: 0029/r3730
+    In TnyCamelFolder don't emit folder store change on observer attachment if there's no folders.
+
+r3765: mail 16 approved: 0033/r3730
+    Fix saving and loading of namespaces in the summary.
+
+r3751: mail 17 approved: 0016/r3730
+    safer camel imap finalize
+
+r3752: mail 18 approved: 0027/r3730
+    tny session camel refcounting
+
+0012/r3767: 0037/r3730
+	Make folder pokes cancellable
+
+removed: 0032/r3730
+    reautogen
+
+0013/r3767
+    revert r2111 from tinymail trunk that added parallel getting of messages, this fixes 3 leaks to a CamelImapFolder object.
+    A better fix from pvanhoof is upstream but server is down right now
+
+0014/r3767
+    fix DDBC

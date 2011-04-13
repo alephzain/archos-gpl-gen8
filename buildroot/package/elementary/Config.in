@@ -1,0 +1,14 @@
+config BR2_PACKAGE_ELEMENTARY
+	bool "elementary"
+	default n
+	select BR2_PACKAGE_EINA
+	select BR2_PACKAGE_EET
+	select BR2_PACKAGE_EVAS
+	select BR2_PACKAGE_ECORE
+	select BR2_PACKAGE_EMBRYO
+	select BR2_PACKAGE_EDJE
+	select BR2_PACKAGE_E_DBUS
+	help
+	  Elementary is the Enlightenment widget toolkit designed for touchscreen uses.
+
+	  http://www.enlightenment.org/

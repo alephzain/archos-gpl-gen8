@@ -1,0 +1,17 @@
+--- binutils-2.18_cortex/gas/config/tc-arm.c_	2008-05-13 19:18:51.000000000 +0200
++++ binutils-2.18_cortex/gas/config/tc-arm.c	2008-05-13 19:19:43.000000000 +0200
+@@ -7209,11 +7209,9 @@
+   inst.instruction |= inst.operands[2].reg;
+   inst.instruction |= inst.operands[3].reg << 8;
+ 
+-  /* rdhi, rdlo and rm must all be different.  */
+-  if (inst.operands[0].reg == inst.operands[1].reg
+-      || inst.operands[0].reg == inst.operands[2].reg
+-      || inst.operands[1].reg == inst.operands[2].reg)
+-    as_tsktsk (_("rdhi, rdlo and rm must all be different"));
++  /* rdhi and rdlo must be different.  */
++  if (inst.operands[0].reg == inst.operands[1].reg)
++    as_tsktsk (_("rdhi and rdlo must be different"));
+ }
+ 
+ static void

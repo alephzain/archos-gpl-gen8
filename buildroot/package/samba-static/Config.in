@@ -1,0 +1,7 @@
+config BR2_PACKAGE_SAMBA_STATIC
+	bool "samba-static"
+	default n
+	help
+	  Samba is a suite implementing SMB/CIFS protocols.
+
+	  This will use a statically-built version (compiled with GCC 4.4.1).
