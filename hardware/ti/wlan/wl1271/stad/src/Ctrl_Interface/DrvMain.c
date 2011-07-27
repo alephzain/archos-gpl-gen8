@@ -108,11 +108,7 @@ typedef enum
     /* 10 */ SM_STATE_STOPPING,     
     /* 11 */ SM_STATE_STOPPED,      
     /* 12 */ SM_STATE_STOPPING_ON_FAIL,       
-    /* 13 */ SM_STATE_FAILED,
-#ifdef CONNECTION_SCAN_PM
-    /* 14 */ SM_STATE_SUSPENDING,
-    /* 15 */ SM_STATE_SUSPENDED
-#endif
+    /* 13 */ SM_STATE_FAILED        
 
 } ESmState;
 
@@ -130,11 +126,7 @@ typedef enum
     /*  8 */ SM_EVENT_RECOVERY,      
     /*  9 */ SM_EVENT_DISCONNECTED,  
     /* 10 */ SM_EVENT_STOP_COMPLETE, 
-    /* 11 */ SM_EVENT_FAILURE,
-#ifdef CONNECTION_SCAN_PM
-    /* 12 */ SM_EVENT_SUSPEND,
-    /* 13 */ SM_EVENT_RESUME
-#endif
+    /* 11 */ SM_EVENT_FAILURE
 
 } ESmEvent;
 
@@ -1072,14 +1064,6 @@ static void drvMain_InvokeAction (TI_HANDLE hDrvMain)
     case ACTION_TYPE_STOP:
         drvMain_SmEvent (hDrvMain, SM_EVENT_STOP);
         break;
-#ifdef CONNECTION_SCAN_PM
-    case ACTION_TYPE_SUSPEND:
-        drvMain_SmEvent (hDrvMain, SM_EVENT_SUSPEND);
-        break;
-    case ACTION_TYPE_RESUME:
-        drvMain_SmEvent (hDrvMain, SM_EVENT_RESUME);
-        break;
-#endif
         default:    
             TRACE1(pDrvMain->tStadHandles.hReport, REPORT_SEVERITY_ERROR , "drvMain_InvokeAction(): Action=%d\n", pNewAction->eAction);
     }
@@ -1756,64 +1740,23 @@ static void drvMain_Sm (TI_HANDLE hDrvMain, ESmEvent eEvent)
          * For recovery, stop driver activities and move to STOPPING state.
          * Note that driver-stop process may be Async if we are during Async bus transaction.
          */
-#ifdef CONNECTION_SCAN_PM
-// These 2 lines should always run for the stop or recovery events
-	if ( (eEvent == SM_EVENT_STOP) || (eEvent == SM_EVENT_RECOVERY) )
-#endif
-         {
+        
         context_DisableClient (pDrvMain->tStadHandles.hContext, pDrvMain->uContextId);
         tmr_UpdateDriverState (pDrvMain->tStadHandles.hTimer, TI_FALSE);
-	 }
-#ifdef CONNECTION_SCAN_PM
-	if (eEvent == SM_EVENT_SUSPEND)
-        {
-	/* change the state to a suspending state */
-         pDrvMain->eSmState = SM_STATE_SUSPENDING;
-
-	/* call the suspend function of the scanCncn (to stop any currently running scans) */
-	scanCncn_Suspend(pDrvMain->tStadHandles.hScanCncn); 
-	/* stop all other activity */
-        sme_Stop (pDrvMain->tStadHandles.hSme);
-        eStatus = TI_OK;
-        }
-#endif
-        if (eEvent == SM_EVENT_STOP)
+        if (eEvent == SM_EVENT_STOP) 
         {
             pDrvMain->eSmState = SM_STATE_DISCONNECTING;
             wlanDrvIf_UpdateDriverState (hOs, DRV_STATE_STOPING);
             sme_Stop (pDrvMain->tStadHandles.hSme);
             eStatus = TI_OK;
         }
-        else if (eEvent == SM_EVENT_RECOVERY)
+        else if (eEvent == SM_EVENT_RECOVERY) 
         {
             pDrvMain->eSmState = SM_STATE_STOPPING;
             eStatus = drvMain_StopActivities (pDrvMain);
         }
         
         break;
-#ifdef CONNECTION_SCAN_PM
-    case SM_STATE_SUSPENDING:
-        if (eEvent == SM_EVENT_DISCONNECTED)
-        {
-            pDrvMain->eSmState = SM_STATE_SUSPENDED;
-            os_SignalObjectSet (hOs, pDrvMain->pCurrAction->pSignalObject);
-            eStatus = TI_OK;
-        }
-        
-        break;
-
-    case SM_STATE_SUSPENDED:
-        if (eEvent == SM_EVENT_RESUME)
-        {
-            pDrvMain->eSmState = SM_STATE_OPERATIONAL;
-            sme_Start (pDrvMain->tStadHandles.hSme);
-            os_SignalObjectSet (hOs, pDrvMain->pCurrAction->pSignalObject);
-            eStatus = TI_OK;
-        }
- 
-        break;
-#endif
-
     case SM_STATE_DISCONNECTING:
         /* 
          * Note that this state is not relevant for recovery.
@@ -1868,26 +1811,14 @@ static void drvMain_Sm (TI_HANDLE hDrvMain, ESmEvent eEvent)
          * A START action command was inserted, so we go through the init process.
          * Turn on device and request NVS file.
          */
-#ifndef CONNECTION_SCAN_PM
         context_DisableClient (pDrvMain->tStadHandles.hContext, pDrvMain->uContextId);
-#endif
         if (eEvent == SM_EVENT_START) 
         {
-#ifdef CONNECTION_SCAN_PM
-	    context_DisableClient (pDrvMain->tStadHandles.hContext, pDrvMain->uContextId);
-#endif           
-	    hPlatform_DevicePowerOn ();
+            hPlatform_DevicePowerOn ();
             pDrvMain->eSmState = SM_STATE_WAIT_NVS_FILE;
             pDrvMain->tFileInfo.eFileType = FILE_TYPE_NVS;
             eStatus = wlanDrvIf_GetFile (hOs, &pDrvMain->tFileInfo);
         }
-#ifdef CONNECTION_SCAN_PM
-        else if ((eEvent == SM_EVENT_SUSPEND) || (eEvent == SM_EVENT_RESUME))
-        {
-            os_SignalObjectSet (hOs, pDrvMain->pCurrAction->pSignalObject);
-            eStatus = TI_OK;
-        }
-#endif
         break;
     case SM_STATE_STOPPING_ON_FAIL:
         /*

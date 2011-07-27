@@ -69,14 +69,6 @@
 #include "Ethernet.h"
 #include "SdioDrv.h"
 
-
-#ifdef CONNECTION_SCAN_PM
-/* prototypes for the suspend/resume functions */
-static int wlanDrvIf_Suspend(void);
-static int wlanDrvIf_Resume(void);
-#define TI_SUSPEND
-#endif
-
 #ifdef TI_DBG
 #include "tracebuf_api.h"
 #endif
@@ -85,6 +77,10 @@ static int wlanDrvIf_Resume(void);
 #ifdef STACK_PROFILE
 #include "stack_profile.h"
 #endif
+
+/* prototypes for the suspend/resume functions */
+static int wlanDrvIf_Suspend(void);
+static int wlanDrvIf_Resume(void);
 
 /* save driver handle just for module cleanup */
 static TWlanDrvIfObj *pDrvStaticHandle;  
@@ -671,12 +667,8 @@ int wlanDrvIf_Start (struct net_device *dev)
         return -ENODEV;
     }
 
-#ifdef CONNECTION_SCAN_PM
-#if 1
     /* Register the PM callback handlers */
     sdioDrv_register_pm(wlanDrvIf_Resume, wlanDrvIf_Suspend);
-#endif
-#endif
 
     return 0;
 }
@@ -886,24 +878,17 @@ static int wlanDrvIf_Create (void)
 	/* Dm:    drv->irq = TNETW_IRQ; */
 	drv->tCommon.eDriverState = DRV_STATE_IDLE;
 
-#ifdef CONNECTION_SCAN_PM
 	/* We want the work queue to be non-freezable, so we will be able to easily support suspend-resume */
 	drv->tiwlan_wq = create_singlethread_workqueue(DRIVERWQ_NAME);
-#else
-  	drv->tiwlan_wq = create_freezeable_workqueue(DRIVERWQ_NAME);
-#endif
-
 	if (!drv->tiwlan_wq) {
 		ti_dprintf (TIWLAN_LOG_ERROR, "wlanDrvIf_Create(): Failed to create workQ!\n");
 		rc = -EINVAL;
 		goto drv_create_end_1;
 	}
 
-#ifdef CONNECTION_SCAN_PM
 	/* by default - wake locks are enabled */
 	drv->wake_locks_enabled = 1;
-#endif
-
+	
 	drv->wl_packet = 0;
 	drv->wl_count = 0;
 #ifdef CONFIG_HAS_WAKELOCK
@@ -1156,71 +1141,35 @@ void wlanDrvIf_ResumeTx (TI_HANDLE hOs)
     netif_wake_queue (drv->netdev);
 }
 
-#ifdef CONNECTION_SCAN_PM
-int wlanDrvIf_Suspend()
+static int wlanDrvIf_Suspend()
 {
     struct net_device *dev = pDrvStaticHandle->netdev;
     TWlanDrvIfObj *drv = (TWlanDrvIfObj *)NETDEV_GET_PRIVATE(dev);
-
-    ti_dprintf (TIWLAN_LOG_OTHER, "wlanDrvIf_Suspend()\n");
-    /* before inserting an action - check driver state */
-    if (DRV_STATE_FAILED == drv->tCommon.eDriverState)
-    {
-        return -ENODEV;
-    }
-
-#ifndef TI_SUSPEND
-    /* First, make sure we stop the netif queue, so transmition will be stopped by the OS */
-    wlanDrvIf_Release( dev); 
-#endif
-    /* disable all wake locks */
-    os_disable_wake_locks(drv);
-
-    /*Insert Stop command in DrvMain action queue, request driver scheduling
-    and wait for Stop process completion.*/
-
-#ifdef TI_SUSPEND
-    // os_wake_lock_timeout_enable(drv);
-    drvMain_InsertAction (drv->tCommon.hDrvMain, ACTION_TYPE_SUSPEND);
-
-    return 0;
-#else
-    return wlanDrvIf_Stop(dev);
-#endif
+	
+	/* First, make sure we stop the netif queue, so transmition will be stopped by the OS */
+	wlanDrvIf_Release( dev );
+	
+	/* disable all wake locks, so we can call the stop function*/
+	os_disable_wake_locks(drv);
+	
+	/* stop the driver */
+    return (wlanDrvIf_Stop(dev));
 }
 
-int wlanDrvIf_Resume ()
+static int wlanDrvIf_Resume()
 {
     struct net_device *dev = pDrvStaticHandle->netdev;
+
     TWlanDrvIfObj *drv = (TWlanDrvIfObj *)NETDEV_GET_PRIVATE(dev);
-
-   // printk("**RESUME**");
-
-    ti_dprintf (TIWLAN_LOG_OTHER, "wlanDrvIf_Resume()\n");
-
-    /* before inserting an action - check driver state */
-    if (DRV_STATE_FAILED == drv->tCommon.eDriverState)
-    {
-        return -ENODEV;
-    }
-
-    /* enable all wake locks */
-    os_enable_wake_locks(drv);
-
-    // Insert Stop command in DrvMain action queue, request driver scheduling
-    // and wait for Stop process completion.
-
-#ifdef TI_SUSPEND
-    os_wake_lock_timeout_enable(drv);
-    drvMain_InsertAction (drv->tCommon.hDrvMain, ACTION_TYPE_RESUME);
-
-    return 0;
-#else
-    return wlanDrvIf_Open(dev);
-#endif
+	
+	/* enable all wake locks (since we previously disabled them in the suspend routine) */
+	os_enable_wake_locks(drv);
+	
+	/* call the 'wlanDrvIf_Open()' function, which will start the driver if necessary,
+		and also, will re-start the netif_queue, so the OS will allow transmition */
+    return (wlanDrvIf_Open(dev));
 }
 
-#endif
 
 module_init (wlanDrvIf_ModuleInit);
 module_exit (wlanDrvIf_ModuleExit);

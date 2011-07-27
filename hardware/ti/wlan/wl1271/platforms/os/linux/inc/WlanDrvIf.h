@@ -121,11 +121,8 @@ typedef struct
     struct wake_lock         wl_wifi;   /* Wifi wakelock */
     struct wake_lock         wl_rxwake; /* Wifi rx wakelock */
 #endif
+	int						 wake_locks_enabled; /* a flag signaling if wake locks are enabled */
     NDIS_HANDLE              ConfigHandle;/* Temp - For Windows compatibility */
-
-#ifdef CONNECTION_SCAN_PM
-    int                      wake_locks_enabled;
-#endif
 
 } TWlanDrvIfObj, *TWlanDrvIfObjPtr;
 

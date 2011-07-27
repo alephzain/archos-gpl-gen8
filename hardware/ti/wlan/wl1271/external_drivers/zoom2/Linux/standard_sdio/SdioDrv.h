@@ -104,10 +104,6 @@ int sdioDrv_WriteSyncBytes (unsigned int  uFunc,
                             unsigned char *pData, 
                             unsigned int  uLen, 
                             unsigned int  bMore);
-#ifdef CONNECTION_SCAN_PM
-	void sdioDrv_register_pm(int (*wlanDrvIf_Resume_func)(void),
-				int (*wlanDrvIf_Suspend_func)(void));
-#endif
 
 int sdioDrv_EnableFunction(unsigned int uFunc);
 int sdioDrv_EnableInterrupt(unsigned int uFunc);

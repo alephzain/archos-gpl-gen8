@@ -66,11 +66,7 @@ typedef enum
 {
     ACTION_TYPE_NONE, 
     ACTION_TYPE_START, 
-    ACTION_TYPE_STOP,
-#ifdef CONNECTION_SCAN_PM
-    ACTION_TYPE_SUSPEND,
-    ACTION_TYPE_RESUME
-#endif
+    ACTION_TYPE_STOP
 } EActionType;
 
 /* Initialization file info */

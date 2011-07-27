@@ -78,7 +78,7 @@
 +		if(current){
 +			if (current->error== 801){
 +				Log_Printf(LOG_WARNING,"not allowed to connect, check permission on server");
-+				FILE_BEGIN("not_allowed"){}FILE_END;}
++				FILE_BEGIN("Not_allowed"){}FILE_END;}
 +		}
 +		talloc_free(current);
 +		current = NULL;

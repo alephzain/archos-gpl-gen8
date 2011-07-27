@@ -34,7 +34,7 @@
 #include <linux/mmc/sdio_ids.h>
 #include <linux/mmc/sdio_func.h>
 #include <linux/delay.h>
-#include <mach/omap-pm.h>
+#include <plat/omap-pm.h>
 
 #include "SdioDrvDbg.h"
 #include "SdioDrv.h"
@@ -49,10 +49,6 @@ typedef struct OMAP3430_sdiodrv
 	void          *async_buffer;
 	unsigned int  async_length;
 	int           async_status;
-#ifdef CONNECTION_SCAN_PM
-	int (*wlanDrvIf_pm_resume)(void);
-	int (*wlanDrvIf_pm_suspend)(void);
-#endif
 	struct device *dev;
 	int           sdio_host_claim_ref;
 	/* Inactivity Timer */
@@ -110,8 +106,8 @@ void sdioDrv_ClaimHost(unsigned int uFunc)
 
     g_drv.sdio_host_claim_ref = 1;
 
-    //omap_pm_set_min_mpu_freq(&dummy_cpufreq_dev.dev, VDD1_OPP2_600MHZ);
-    //tick_nohz_disable(1);
+    omap_pm_set_min_mpu_freq(&dummy_cpufreq_dev.dev, VDD1_OPP2_600MHZ);
+    tick_nohz_disable(1);
 
     sdio_claim_host(tiwlan_func[uFunc]);
 }
@@ -127,8 +123,8 @@ void sdioDrv_ReleaseHost(unsigned int uFunc)
 
     g_drv.sdio_host_claim_ref = 0;
 
-    //omap_pm_set_min_mpu_freq(&dummy_cpufreq_dev.dev, VDD1_OPP1_300MHZ);
-    //tick_nohz_disable(0);
+    omap_pm_set_min_mpu_freq(&dummy_cpufreq_dev.dev, VDD1_OPP1_300MHZ);
+    tick_nohz_disable(0);
 
     sdio_release_host(tiwlan_func[uFunc]);
 }
@@ -450,19 +446,7 @@ MODULE_DEVICE_TABLE(sdio, tiwl12xx_devices);
 
 int sdio_tiwlan_suspend(struct device *dev)
 {
-	int rc = 0;
-
-#ifdef CONNECTION_SCAN_PM
-	/* Tell WLAN driver to suspend, if a suspension function has been registered */
-	if (g_drv.wlanDrvIf_pm_suspend) {
-		rc = g_drv.wlanDrvIf_pm_suspend();
-		if (rc != 0)
-			return rc;
-	}
-	sdioDrv_cancel_inact_timer();
-	sdioDrv_ReleaseHost(SDIO_WLAN_FUNC);
-#endif
-	return rc;
+	return 0;
 }
 
 int sdio_tiwlan_resume(struct device *dev)
@@ -478,14 +462,6 @@ int sdio_tiwlan_resume(struct device *dev)
 	 * (bus width and speed)
 	 */
 	sdio_reset_comm(tiwlan_func[SDIO_WLAN_FUNC]->card);
-
-#ifdef CONNECTION_SCAN_PM
-	sdioDrv_ClaimHost(SDIO_WLAN_FUNC);
-	if (g_drv.wlanDrvIf_pm_resume) {
-		return(g_drv.wlanDrvIf_pm_resume());
-	}
-	else
-#endif
 	return 0;
 }
 
@@ -493,15 +469,6 @@ const struct dev_pm_ops sdio_tiwlan_pmops = {
 	.suspend = sdio_tiwlan_suspend,
 	.resume = sdio_tiwlan_resume,
 };
-
-#ifdef CONNECTION_SCAN_PM
-void sdioDrv_register_pm(int (*wlanDrvIf_Resume_func)(void),
-			int (*wlanDrvIf_Suspend_func)(void))
-{
-	g_drv.wlanDrvIf_pm_resume = wlanDrvIf_Resume_func;
-	g_drv.wlanDrvIf_pm_suspend = wlanDrvIf_Suspend_func;
-}
-#endif
 
 static struct sdio_driver tiwlan_sdio_drv = {
 	.probe          = tiwlan_sdio_probe,

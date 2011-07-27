@@ -229,10 +229,8 @@ typedef struct OMAP3430_sdiodrv
 	unsigned int  uBlkSize;
 	unsigned int  uBlkSizeShift;
 	int           async_status;
-#ifdef CONNECTION_SCAN_PM
 	int (*wlanDrvIf_pm_resume)(void);
 	int (*wlanDrvIf_pm_suspend)(void);
-#endif
 	struct device *dev;
 	dma_addr_t dma_read_addr;
 	size_t dma_read_size;
@@ -1213,7 +1211,6 @@ static int sdioDrv_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int rc = 0;
 	printk(KERN_INFO "TISDIO: sdioDrv is suspending\n");
-#ifdef CONNECTION_SCAN_PM
 	/* Tell WLAN driver to suspend, if a suspension function has been registered */
 	if (g_drv.wlanDrvIf_pm_suspend) {
 		printk(KERN_INFO "TISDIO: Asking TIWLAN to suspend\n");
@@ -1221,7 +1218,6 @@ static int sdioDrv_suspend(struct platform_device *pdev, pm_message_t state)
 		if (rc != 0)
 			return rc;
 	}
-#endif
 
 	//diodrv_shutdown();
 	sdioDrv_cancel_inact_timer();
@@ -1245,12 +1241,10 @@ static int sdioDrv_resume(struct platform_device *pdev)
 	
 	sdioDrv_clk_enable();
 
-#ifdef CONNECTION_SCAN_PM
 	if (g_drv.wlanDrvIf_pm_resume) {
 		printk(KERN_INFO "TISDIO: Asking TIWLAN to resume\n");
 		return(g_drv.wlanDrvIf_pm_resume());
 	}
-#endif
 	return rc;
 }
 #else
@@ -1268,14 +1262,13 @@ static struct platform_driver sdioDrv_struct = {
 	},
 };
 
-#ifdef CONNECTION_SCAN_PM
+
 void sdioDrv_register_pm(int (*wlanDrvIf_Start)(void),
 						int (*wlanDrvIf_Stop)(void))
 {
 	g_drv.wlanDrvIf_pm_resume = wlanDrvIf_Start;
 	g_drv.wlanDrvIf_pm_suspend = wlanDrvIf_Stop;
 }
-#endif
 
 #ifdef CONFIG_PM
 int sdioDrv_clk_enable(void)
