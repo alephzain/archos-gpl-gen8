@@ -52,6 +52,7 @@ $(FFMPEG_TINY_DIR)/.configured: $(FFMPEG_TINY_DIR)/.unpacked
 	--enable-decoder=aac \
 	--enable-decoder=mp2 \
 	--enable-decoder=mp3 \
+	--enable-decoder=wmavoice \
 	--enable-decoder=wavpack \
 	--enable-decoder=tta \
 	\
