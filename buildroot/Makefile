@@ -237,12 +237,14 @@ include toolchain/uClibc/uclibc.mk
 PATH:=$(STAGING_DIR)/usr/bin/:$(PATH)
 
 include ../linux/kernel.mk
+include ../ext_modules/ext_modules.mk
 else
 include toolchain/*/*.mk
 endif
 
 ifeq ($(BR2_PACKAGE_LINUX),y)
 TARGETS+=linux26-modules
+TARGETS+=ext-modules
 endif
 
 include package/*/*.mk
@@ -270,7 +272,7 @@ dirs: $(DL_DIR) $(TOOL_BUILD_DIR) $(BUILD_DIR) $(STAGING_DIR) $(TARGET_DIR) \
 
 $(BASE_TARGETS): dirs
 
-world: dependencies dirs target-host-info $(BASE_TARGETS) $(TARGETS_ALL)
+world: ext_modules dependencies dirs target-host-info $(BASE_TARGETS) $(TARGETS_ALL)
 
 
 .PHONY: all world dirs clean dirclean distclean source \
