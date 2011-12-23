@@ -272,7 +272,7 @@ dirs: $(DL_DIR) $(TOOL_BUILD_DIR) $(BUILD_DIR) $(STAGING_DIR) $(TARGET_DIR) \
 
 $(BASE_TARGETS): dirs
 
-world: ext_modules dependencies dirs target-host-info $(BASE_TARGETS) $(TARGETS_ALL)
+world: dependencies dirs target-host-info $(BASE_TARGETS) $(TARGETS_ALL) ext_modules
 
 
 .PHONY: all world dirs clean dirclean distclean source \
